@@ -80,6 +80,40 @@ function initDB() {
     });
 }
 
+// 格式化错误信息，提供用户友好的提示
+function getErrorMessage(error, dataType) {
+    const errorMsg = error.message || String(error);
+    let userMsg = `无法加载${dataType}。`;
+    
+    // 检测常见错误类型
+    if (errorMsg.includes('permission') || errorMsg.includes('Permission denied')) {
+        userMsg += '<br><br>❌ <strong>权限错误</strong>：Firestore 安全规则可能不允许访问。';
+        userMsg += '<br>请检查 Firebase Console → Firestore Database → Rules';
+    } else if (errorMsg.includes('network') || errorMsg.includes('Failed to fetch')) {
+        userMsg += '<br><br>❌ <strong>网络错误</strong>：无法连接到 Firebase 服务器。';
+        userMsg += '<br>请检查：<br>1. 移动网络/WiFi 连接<br>2. 防火墙设置<br>3. VPN 是否影响连接';
+    } else if (errorMsg.includes('index')) {
+        userMsg += '<br><br>⚠️ <strong>索引缺失</strong>：Firestore 可能需要创建索引。';
+        userMsg += '<br>数据仍会加载，但可能较慢。';
+    } else if (errorMsg.includes('quota') || errorMsg.includes('quota exceeded')) {
+        userMsg += '<br><br>❌ <strong>配额超限</strong>：Firebase 免费额度可能已用完。';
+        userMsg += '<br>请检查 Firebase Console 中的使用情况。';
+    } else {
+        userMsg += '<br><br>错误详情：' + errorMsg;
+    }
+    
+    // 添加移动端特定提示
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    if (isMobile) {
+        userMsg += '<br><br>📱 <strong>移动端提示</strong>：';
+        userMsg += '<br>• 确保使用 HTTPS 访问（Netlify 已自动配置）';
+        userMsg += '<br>• 检查移动网络是否允许访问 Firebase';
+        userMsg += '<br>• 尝试切换到 WiFi 网络';
+    }
+    
+    return userMsg;
+}
+
 // Initialize page
 document.addEventListener('DOMContentLoaded', async function() {
     // 显示加载状态
@@ -104,32 +138,38 @@ document.addEventListener('DOMContentLoaded', async function() {
                 console.log('Firestore initialized');
                 
                 // 加载初始数据（使用 try-catch 确保单个失败不影响其他）
+                let menuLoadError = null;
                 try {
                     menuItems = await loadMenuItemsFromFirestore();
                     console.log('Menu items loaded:', menuItems.length, 'items');
                 } catch (menuError) {
                     console.error('Failed to load menu items:', menuError);
                     menuItems = [];
+                    menuLoadError = menuError;
                     // 显示用户友好的错误提示
-                    if (menuError.message && menuError.message.includes('index')) {
-                        console.warn('Firestore index may be missing. Data will still load but may be slower.');
-                    } else {
-                        console.warn('Menu items loading failed, but continuing with empty menu');
+                    const errorMsg = getErrorMessage(menuError, '菜单数据');
+                    if (menuContainer) {
+                        menuContainer.innerHTML = '<div class="error-message">' + errorMsg + 
+                            '<br><br><button onclick="location.reload()" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">🔄 重试</button>' +
+                            '<br><br><small style="color: #999;">如果问题持续，请检查：<br>1. 网络连接<br>2. Firebase 配置<br>3. Firestore 安全规则</small></div>';
                     }
                 }
                 
+                let ordersLoadError = null;
                 try {
                     allOrders = await loadOrdersFromFirestore();
                     console.log('Orders loaded:', allOrders.length, 'orders');
                 } catch (ordersError) {
                     console.error('Failed to load orders:', ordersError);
                     allOrders = [];
-                    // 显示用户友好的错误提示
-                    if (ordersError.message && ordersError.message.includes('index')) {
-                        console.warn('Firestore index may be missing. Data will still load but may be slower.');
-                    } else {
-                        console.warn('Orders loading failed, but continuing with empty orders');
-                    }
+                    ordersLoadError = ordersError;
+                    // 订单加载失败不影响菜单显示，只记录错误
+                    console.warn('Orders loading failed:', ordersError.message);
+                }
+                
+                // 如果菜单加载失败，不继续渲染
+                if (menuLoadError) {
+                    return;
                 }
                 
                 // 设置实时监听
@@ -157,14 +197,24 @@ document.addEventListener('DOMContentLoaded', async function() {
                 }
             } catch (firebaseError) {
                 console.error('Firebase initialization failed:', firebaseError);
+                const errorMsg = getErrorMessage(firebaseError, 'Firebase 数据库');
                 if (menuContainer) {
-                    menuContainer.innerHTML = '<div class="error-message">无法连接到 Firebase 数据库。请检查网络连接和 Firebase 配置。<br><br>错误信息: ' + firebaseError.message + '</div>';
+                    menuContainer.innerHTML = '<div class="error-message">' + errorMsg + 
+                        '<br><br><button onclick="location.reload()" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">🔄 重试</button>' +
+                        '<br><br><details style="margin-top: 15px;"><summary style="cursor: pointer; color: #4CAF50;">🔍 查看诊断信息</summary><pre style="background: #2a2a2a; padding: 10px; border-radius: 5px; overflow-x: auto; margin-top: 10px; font-size: 12px;">' +
+                        'User Agent: ' + navigator.userAgent + '\n' +
+                        'URL: ' + window.location.href + '\n' +
+                        'Firebase Config: ' + (typeof firebase !== 'undefined' ? '已加载' : '未加载') + '\n' +
+                        '错误: ' + firebaseError.message + '\n' +
+                        '堆栈: ' + (firebaseError.stack || 'N/A') +
+                        '</pre></details></div>';
                 } else {
-                    alert('无法连接到 Firebase 数据库。请检查网络连接和 Firebase 配置。\n\n错误信息: ' + firebaseError.message);
+                    alert('无法连接到 Firebase 数据库。\n\n' + errorMsg);
                 }
                 // 使用空数据继续，避免页面完全无法使用
                 menuItems = [];
                 allOrders = [];
+                return;
             }
         } else {
             // 使用 IndexedDB（本地存储）

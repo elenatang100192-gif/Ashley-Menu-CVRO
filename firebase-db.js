@@ -88,7 +88,13 @@ async function loadMenuItemsFromFirestore() {
         } catch (orderByError) {
             // 如果 orderBy 失败（可能是缺少索引），尝试不使用 orderBy
             console.warn('orderBy failed, trying without orderBy:', orderByError);
-            snapshot = await firestoreDB.collection(COLLECTION_MENU).get();
+            try {
+                snapshot = await firestoreDB.collection(COLLECTION_MENU).get();
+            } catch (getError) {
+                // 如果基本查询也失败，抛出错误
+                console.error('Failed to get menu items from Firestore:', getError);
+                throw new Error('无法从 Firestore 加载菜单数据: ' + getError.message);
+            }
         }
         
         const items = [];
@@ -116,9 +122,8 @@ async function loadMenuItemsFromFirestore() {
         return items;
     } catch (error) {
         console.error('Failed to load menu items from Firestore:', error);
-        // 返回空数组而不是抛出错误，避免阻止页面加载
-        console.warn('Returning empty menu items array due to error');
-        return [];
+        // 抛出错误以便上层处理
+        throw error;
     }
 }
 
@@ -183,7 +188,13 @@ async function loadOrdersFromFirestore() {
         } catch (orderByError) {
             // 如果 orderBy 失败（可能是缺少索引或字段），尝试不使用 orderBy
             console.warn('orderBy failed, trying without orderBy:', orderByError);
-            snapshot = await firestoreDB.collection(COLLECTION_ORDERS).get();
+            try {
+                snapshot = await firestoreDB.collection(COLLECTION_ORDERS).get();
+            } catch (getError) {
+                // 如果基本查询也失败，抛出错误
+                console.error('Failed to get orders from Firestore:', getError);
+                throw new Error('无法从 Firestore 加载订单数据: ' + getError.message);
+            }
         }
         
         const orders = [];
@@ -209,9 +220,8 @@ async function loadOrdersFromFirestore() {
         return orders;
     } catch (error) {
         console.error('Failed to load orders from Firestore:', error);
-        // 返回空数组而不是抛出错误，避免阻止页面加载
-        console.warn('Returning empty orders array due to error');
-        return [];
+        // 抛出错误以便上层处理
+        throw error;
     }
 }
 
