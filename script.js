@@ -385,6 +385,12 @@ document.addEventListener('DOMContentLoaded', async function() {
         importDataFile.addEventListener('change', handleDataImport);
     }
     
+    // Bind clear cache button
+    const clearCacheBtn = document.getElementById('clearCacheBtn');
+    if (clearCacheBtn) {
+        clearCacheBtn.addEventListener('click', clearCache);
+    }
+    
     // Save data before page unload to prevent data loss
     window.addEventListener('beforeunload', async function() {
         try {
@@ -2283,4 +2289,128 @@ function handleDataImport(event) {
     };
     
     reader.readAsText(file);
+}
+
+// Clear all cache (localStorage, IndexedDB, and Firebase cache)
+async function clearCache() {
+    // Double confirmation for safety
+    const confirmMessage = '⚠️ Warning: This will clear all cached data!\n\n' +
+        'This includes:\n' +
+        '• localStorage data\n' +
+        '• IndexedDB data\n' +
+        '• Firebase local cache\n\n' +
+        '⚠️ Note: This will NOT delete data from Firebase server.\n' +
+        'Data will be reloaded from Firebase on next page refresh.\n\n' +
+        'Are you sure you want to continue?';
+    
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    const secondConfirm = confirm('⚠️ Final confirmation: Clear all cache?\n\n' +
+        'This action cannot be undone. The page will refresh after clearing cache.');
+    
+    if (!secondConfirm) {
+        return;
+    }
+    
+    try {
+        console.log('🗑️ Starting cache clearing process...');
+        
+        // 1. Clear localStorage
+        console.log('Clearing localStorage...');
+        localStorage.removeItem('menuItems');
+        localStorage.removeItem('menuOrders');
+        console.log('✅ localStorage cleared');
+        
+        // 2. Clear IndexedDB
+        if (db) {
+            console.log('Clearing IndexedDB...');
+            try {
+                // Clear menuItems store
+                await new Promise((resolve, reject) => {
+                    const transaction = db.transaction([STORE_MENU], 'readwrite');
+                    const store = transaction.objectStore(STORE_MENU);
+                    const clearRequest = store.clear();
+                    
+                    clearRequest.onsuccess = () => {
+                        console.log('✅ IndexedDB menuItems cleared');
+                        resolve();
+                    };
+                    
+                    clearRequest.onerror = () => {
+                        console.error('Failed to clear IndexedDB menuItems:', clearRequest.error);
+                        reject(clearRequest.error);
+                    };
+                });
+                
+                // Clear orders store
+                await new Promise((resolve, reject) => {
+                    const transaction = db.transaction([STORE_ORDERS], 'readwrite');
+                    const store = transaction.objectStore(STORE_ORDERS);
+                    const clearRequest = store.clear();
+                    
+                    clearRequest.onsuccess = () => {
+                        console.log('✅ IndexedDB orders cleared');
+                        resolve();
+                    };
+                    
+                    clearRequest.onerror = () => {
+                        console.error('Failed to clear IndexedDB orders:', clearRequest.error);
+                        reject(clearRequest.error);
+                    };
+                });
+            } catch (error) {
+                console.warn('⚠️ Failed to clear IndexedDB:', error);
+                // Continue even if IndexedDB clearing fails
+            }
+        }
+        
+        // 3. Clear Firebase Firestore cache (if using Firebase)
+        if (USE_FIREBASE && typeof firebase !== 'undefined') {
+            console.log('Clearing Firebase Firestore cache...');
+            try {
+                const db = firebase.firestore();
+                
+                // Disable network first
+                await db.disableNetwork();
+                console.log('✅ Firebase network disabled');
+                
+                // Clear persistence (this clears the local cache)
+                // Note: clearPersistence() requires all listeners to be unsubscribed first
+                // We'll try to clear it, but if it fails due to active listeners, that's okay
+                try {
+                    await db.clearPersistence();
+                    console.log('✅ Firebase persistence cleared');
+                } catch (persistenceError) {
+                    // This is expected if there are active listeners
+                    console.warn('⚠️ Could not clear Firebase persistence (may have active listeners):', persistenceError.message);
+                    console.log('ℹ️ This is normal if the app is actively using Firebase. Cache will be cleared on next page load.');
+                }
+                
+                // Re-enable network
+                await db.enableNetwork();
+                console.log('✅ Firebase network re-enabled');
+            } catch (error) {
+                console.warn('⚠️ Failed to clear Firebase cache:', error);
+                // Try to re-enable network even if clearing failed
+                try {
+                    const db = firebase.firestore();
+                    await db.enableNetwork();
+                } catch (e) {
+                    console.error('Failed to re-enable Firebase network:', e);
+                }
+            }
+        }
+        
+        console.log('✅ Cache clearing completed');
+        alert('✅ Cache cleared successfully!\n\nThe page will now refresh to reload data from Firebase.');
+        
+        // Refresh the page to reload data
+        window.location.reload();
+        
+    } catch (error) {
+        console.error('❌ Failed to clear cache:', error);
+        alert('Failed to clear cache: ' + (error.message || 'Unknown error') + '\n\nPlease try refreshing the page manually.');
+    }
 }

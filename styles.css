@@ -472,6 +472,28 @@ h2 {
     background: #E88A00;
 }
 
+.clear-cache-btn {
+    padding: 12px 24px;
+    background: #6c757d;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 4px;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+
+.clear-cache-btn:hover {
+    background: #5a6268;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.clear-cache-btn:active {
+    background: #545b62;
+}
+
 .add-item-form {
     background: #FFFFFF;
     border: 1px solid #E7E7E7;
