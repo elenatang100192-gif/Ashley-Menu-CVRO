@@ -106,6 +106,56 @@ h2 {
     line-height: 1.4;
 }
 
+/* Restaurant Filter Section */
+.restaurant-filter-section {
+    margin-bottom: 24px;
+    padding: 16px;
+    background: #FFFFFF;
+    border: 1px solid #E7E7E7;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.restaurant-filter-section label {
+    color: #232F3E;
+    font-weight: 500;
+    font-size: 0.9375rem;
+    white-space: nowrap;
+}
+
+.restaurant-filter {
+    flex: 1;
+    max-width: 300px;
+    padding: 10px 12px;
+    padding-right: 36px;
+    border: 1px solid #D5D9D9;
+    border-radius: 4px;
+    font-size: 0.9375rem;
+    color: #232F3E;
+    background: #FFFFFF;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-family: inherit;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23232F3E' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 12px;
+}
+
+.restaurant-filter:hover {
+    border-color: #007185;
+}
+
+.restaurant-filter:focus {
+    outline: none;
+    border-color: #007185;
+    box-shadow: 0 0 0 3px rgba(0, 113, 133, 0.1);
+}
+
 /* Menu Container - Amazon Card Style */
 .menu-container {
     display: flex;
@@ -210,6 +260,14 @@ h2 {
     color: #232F3E;
     margin-bottom: 4px;
     line-height: 1.4;
+}
+
+.menu-item-tag {
+    font-size: 0.8125rem;
+    color: #007185;
+    margin-bottom: 6px;
+    font-weight: 500;
+    line-height: 1.3;
 }
 
 .menu-item-subtitle {
@@ -657,6 +715,13 @@ h2 {
     letter-spacing: 0.5px;
 }
 
+.item-tag {
+    font-size: 0.875rem;
+    color: #007185;
+    font-weight: 500;
+    margin-bottom: 6px;
+}
+
 .item-subtitle {
     font-size: 0.875rem;
     color: #565959;
@@ -968,6 +1033,22 @@ h2 {
         font-size: 1.5rem;
         margin-bottom: 20px;
     }
+    
+    .restaurant-filter-section {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 12px;
+        margin-bottom: 20px;
+    }
+    
+    .restaurant-filter-section label {
+        margin-bottom: 8px;
+    }
+    
+    .restaurant-filter {
+        max-width: 100%;
+        width: 100%;
+    }
 
     h2 {
         font-size: 1.125rem;
@@ -1068,6 +1149,10 @@ h2 {
         line-height: 1.3;
     }
 
+    .menu-item-tag {
+        font-size: 0.75rem;
+    }
+
     .menu-item-subtitle {
         font-size: 0.75rem;
     }
@@ -1101,6 +1186,21 @@ h2 {
     h1 {
         font-size: 1.375rem;
         margin-bottom: 16px;
+    }
+    
+    .restaurant-filter-section {
+        padding: 10px;
+        margin-bottom: 16px;
+    }
+    
+    .restaurant-filter-section label {
+        font-size: 0.875rem;
+    }
+    
+    .restaurant-filter {
+        font-size: 0.875rem;
+        padding: 8px 10px;
+        padding-right: 32px;
     }
 
     h2 {
@@ -1143,7 +1243,11 @@ h2 {
         font-size: 0.8125rem;
         line-height: 1.2;
     }
-
+    
+    .menu-item-tag {
+        font-size: 0.6875rem;
+    }
+    
     .menu-item-subtitle {
         font-size: 0.6875rem;
     }

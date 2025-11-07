@@ -62,6 +62,12 @@
     <div id="menuPage" class="page active">
         <div class="container">
             <h1>Ashley Menu Selection System</h1>
+            <div class="restaurant-filter-section">
+                <label for="restaurantFilter" style="color: #333; font-weight: 500; margin-right: 10px;">Filter by Restaurant:</label>
+                <select id="restaurantFilter" class="restaurant-filter">
+                    <option value="">All Restaurants</option>
+                </select>
+            </div>
             <div id="menuContainer" class="menu-container">
                 <!-- Menu items will be dynamically generated -->
             </div>
@@ -120,6 +126,10 @@
                 <div class="form-group">
                     <label for="itemName">Name *</label>
                     <input type="text" id="itemName" placeholder="Item name" required />
+                </div>
+                <div class="form-group">
+                    <label for="itemTag">Restaurant *</label>
+                    <input type="text" id="itemTag" placeholder="Restaurant name" required />
                 </div>
                 <div class="form-group">
                     <label for="itemSubtitle">Subtitle</label>

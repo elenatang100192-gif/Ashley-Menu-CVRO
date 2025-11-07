@@ -215,6 +215,8 @@ document.addEventListener('DOMContentLoaded', async function() {
                         console.log('🔄 Rendering menu with', items.length, 'items from real-time sync');
                         renderMenu();
                         renderItemsList();
+                        // Update restaurant filter when menu items change
+                        updateRestaurantFilter();
                     });
                     
                     unsubscribeOrders = subscribeToOrders((orders) => {
@@ -274,6 +276,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         renderMenu();
         renderSelectedItems();
         renderItemsList();
+        // Update restaurant filter options after initial render
+        updateRestaurantFilter();
         console.log('✅ 页面初始化完成');
     
     // Bind events
@@ -298,6 +302,16 @@ document.addEventListener('DOMContentLoaded', async function() {
         orderSearchInput.addEventListener('input', async function(e) {
             await renderAllOrders(e.target.value);
         });
+    }
+    
+    // Bind restaurant filter
+    const restaurantFilter = document.getElementById('restaurantFilter');
+    if (restaurantFilter) {
+        restaurantFilter.addEventListener('change', function(e) {
+            renderMenu();
+        });
+        // Update restaurant filter options
+        updateRestaurantFilter();
     }
     
     // Bind add item button
@@ -837,6 +851,7 @@ function editMenuItem(itemId) {
     // Fill form with item data
     document.getElementById('itemCategory').value = item.category || '';
     document.getElementById('itemName').value = item.name || '';
+    document.getElementById('itemTag').value = item.tag || '';
     document.getElementById('itemSubtitle').value = item.subtitle || '';
     document.getElementById('itemDescription').value = item.description || '';
     document.getElementById('itemPrice').value = item.price || '';
@@ -885,6 +900,7 @@ function cancelEdit() {
     // Clear form
     document.getElementById('itemCategory').value = '';
     document.getElementById('itemName').value = '';
+    document.getElementById('itemTag').value = '';
     document.getElementById('itemSubtitle').value = '';
     document.getElementById('itemDescription').value = '';
     document.getElementById('itemPrice').value = '';
@@ -922,12 +938,13 @@ async function addMenuItem() {
     
     const category = document.getElementById('itemCategory').value.trim();
     const name = document.getElementById('itemName').value.trim();
+    const tag = document.getElementById('itemTag').value.trim();
     const subtitle = document.getElementById('itemSubtitle').value.trim();
     const description = document.getElementById('itemDescription').value.trim();
     const price = document.getElementById('itemPrice').value.trim();
     const imageFile = document.getElementById('itemImage').files[0];
     
-    console.log('Form values:', { category, name, price, hasImage: !!imageFile, editingItemId }); // Debug log
+    console.log('Form values:', { category, name, tag, price, hasImage: !!imageFile, editingItemId }); // Debug log
     
     if (!category) {
         alert('Please select a category (required)');
@@ -936,6 +953,11 @@ async function addMenuItem() {
     
     if (!name) {
         alert('Please fill in the required field (name)');
+        return;
+    }
+    
+    if (!tag) {
+        alert('Please fill in the required field (tag)');
         return;
     }
     
@@ -973,6 +995,7 @@ async function addMenuItem() {
                             ...menuItems[itemIndex],
                             category: category,
                             name: name,
+                            tag: tag,
                             subtitle: subtitle || '',
                             description: description || '',
                             price: price,
@@ -990,6 +1013,7 @@ async function addMenuItem() {
                     ...menuItems[itemIndex],
                     category: category,
                     name: name,
+                    tag: tag,
                     subtitle: subtitle || '',
                     description: description || '',
                     price: price
@@ -1020,6 +1044,7 @@ async function addMenuItem() {
                 console.log('🔄 Rendering menu with', menuItems.length, 'items');
                 renderMenu();
                 renderItemsList();
+                updateRestaurantFilter();
                 
                 // Re-enable button
                 addBtn.disabled = false;
@@ -1089,6 +1114,7 @@ async function addMenuItem() {
                 id: Date.now(),
                 category: category,
                 name: name,
+                tag: tag,
                 subtitle: subtitle || '',
                 description: description || '',
                 price: price,
@@ -1165,6 +1191,7 @@ async function addMenuItem() {
             console.log('🔄 Rendering menu with', menuItems.length, 'items');
             renderMenu();
             renderItemsList();
+            updateRestaurantFilter();
             
             // Re-enable button
             restoreButton();
@@ -1203,6 +1230,7 @@ async function deleteMenuItem(itemId) {
             await saveMenuToStorage();
             renderMenu();
             renderItemsList();
+            updateRestaurantFilter();
         } catch (e) {
             console.error('Failed to delete item:', e);
             alert('Failed to delete item. Please try again.');
@@ -1344,6 +1372,7 @@ function renderItemsList() {
             <div class="item-card-info">
                 ${item.category ? `<p class="item-category">Category: ${item.category}</p>` : ''}
                 <h3>${item.name}</h3>
+                ${item.tag ? `<p class="item-tag">🍽️ Restaurant: ${item.tag}</p>` : ''}
                 ${item.subtitle ? `<p class="item-subtitle">${item.subtitle}</p>` : ''}
                 ${item.description ? `<p class="item-description">${item.description}</p>` : ''}
                 ${item.price ? `<p class="item-price">${item.price}</p>` : ''}
@@ -1358,11 +1387,49 @@ function renderItemsList() {
 }
 
 // Render menu
+// Update restaurant filter dropdown options
+function updateRestaurantFilter() {
+    const restaurantFilter = document.getElementById('restaurantFilter');
+    if (!restaurantFilter) return;
+    
+    // Get unique restaurants from menu items
+    const restaurants = [...new Set(menuItems.map(item => item.tag).filter(tag => tag && tag.trim()))].sort();
+    
+    // Save current selection
+    const currentValue = restaurantFilter.value;
+    
+    // Clear and add options
+    restaurantFilter.innerHTML = '<option value="">All Restaurants</option>';
+    restaurants.forEach(restaurant => {
+        const option = document.createElement('option');
+        option.value = restaurant;
+        option.textContent = restaurant;
+        restaurantFilter.appendChild(option);
+    });
+    
+    // Restore selection if it still exists
+    if (currentValue && restaurants.includes(currentValue)) {
+        restaurantFilter.value = currentValue;
+    }
+}
+
 function renderMenu() {
     const container = document.getElementById('menuContainer');
     if (!container) {
         console.error('menuContainer not found');
         return;
+    }
+    
+    // Get selected restaurant filter
+    const restaurantFilter = document.getElementById('restaurantFilter');
+    const selectedRestaurant = restaurantFilter ? restaurantFilter.value : '';
+    
+    // Update restaurant filter options
+    updateRestaurantFilter();
+    
+    // Restore filter selection
+    if (restaurantFilter && selectedRestaurant) {
+        restaurantFilter.value = selectedRestaurant;
     }
     
     container.innerHTML = '';
@@ -1385,6 +1452,12 @@ function renderMenu() {
         return;
     }
     
+    // Filter items by restaurant if filter is selected
+    let filteredItems = menuItems;
+    if (selectedRestaurant) {
+        filteredItems = menuItems.filter(item => item.tag === selectedRestaurant);
+    }
+    
     // Group items by category
     const categories = ['Main Course', 'Salad', 'Snack', 'Drink'];
     const itemsByCategory = {};
@@ -1395,7 +1468,7 @@ function renderMenu() {
     });
     
     // Group items
-    menuItems.forEach(item => {
+    filteredItems.forEach(item => {
         const category = item.category || 'Uncategorized';
         if (categories.includes(category)) {
             if (!itemsByCategory[category]) {
@@ -1439,6 +1512,7 @@ function renderMenu() {
                 ${item.image ? `<div class="menu-item-image"><img src="${item.image}" alt="${item.name}" /></div>` : ''}
                 <div class="menu-item-content">
                     <div class="menu-item-name">${item.name}</div>
+                    ${item.tag ? `<div class="menu-item-tag">🍽️ Restaurant: ${item.tag}</div>` : ''}
                     ${item.subtitle ? `<div class="menu-item-subtitle">${item.subtitle}</div>` : ''}
                     ${item.description ? `<div class="menu-item-description">${item.description}</div>` : ''}
                     ${item.price ? `<div class="menu-item-price">${item.price}</div>` : ''}
@@ -1524,6 +1598,7 @@ async function confirmOrder() {
             id: item.id,
             category: item.category || '',
             name: item.name,
+            tag: item.tag || '',
             subtitle: item.subtitle || '',
             description: item.description || '',
             price: item.price || '',
@@ -1714,9 +1789,10 @@ async function downloadOrders() {
     }
     
     // Prepare CSV data with detailed information
-    const csvHeaders = ['Date', 'Customer Name', 'Items', 'Total Price'];
+    const csvHeaders = ['Date', 'Customer Name', 'Items', 'Restaurants', 'Total Price'];
     const csvRows = allOrders.map(order => {
         const itemsList = order.items.map(item => item.price ? `${item.name} (${item.price})` : item.name).join('; ');
+        const restaurantsList = order.items.map(item => item.tag || '').filter(tag => tag).join('; ');
         const totalPrice = order.items.reduce((sum, item) => {
             const price = item.price ? parseFloat(item.price.replace(/[^0-9.]/g, '')) || 0 : 0;
             return sum + price;
@@ -1725,6 +1801,7 @@ async function downloadOrders() {
             order.date,
             order.name,
             itemsList,
+            restaurantsList,
             `$${totalPrice.toFixed(2)}`
         ];
     });

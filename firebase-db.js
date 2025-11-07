@@ -196,6 +196,7 @@ async function saveMenuItemsToFirestore(items) {
                 id: itemId, // 确保 id 字段类型一致
                 category: item.category || '',
                 name: item.name || '',
+                tag: item.tag || '',
                 subtitle: item.subtitle || '',
                 description: item.description || '',
                 price: item.price || '',
@@ -271,6 +272,7 @@ async function loadMenuItemsFromFirestore() {
                 id: data.id,
                 category: data.category || '',
                 name: data.name || '',
+                tag: data.tag || '',
                 subtitle: data.subtitle || '',
                 description: data.description || '',
                 price: data.price || '',
@@ -585,11 +587,12 @@ function subscribeToMenuItems(callback) {
         const items = [];
         snapshot.forEach(doc => {
             const data = doc.data();
-            console.log('📄 Document:', doc.id, 'Data:', { id: data.id, name: data.name, category: data.category });
+            console.log('📄 Document:', doc.id, 'Data:', { id: data.id, name: data.name, category: data.category, tag: data.tag });
             items.push({
                 id: data.id,
                 category: data.category || '',
                 name: data.name || '',
+                tag: data.tag || '',
                 subtitle: data.subtitle || '',
                 description: data.description || '',
                 price: data.price || '',
