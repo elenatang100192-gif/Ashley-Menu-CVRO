@@ -82,36 +82,90 @@ function initDB() {
 
 // Initialize page
 document.addEventListener('DOMContentLoaded', async function() {
+    // 显示加载状态
+    const menuContainer = document.getElementById('menuContainer');
+    if (menuContainer) {
+        menuContainer.innerHTML = '<div class="loading-message">正在加载数据...</div>';
+    }
+    
     try {
         if (USE_FIREBASE) {
             // 使用 Firebase
             if (typeof firebase === 'undefined') {
+                if (menuContainer) {
+                    menuContainer.innerHTML = '<div class="error-message">Firebase SDK 未加载。请检查 firebase-config.js 和 index.html 中的 Firebase SDK 引用。</div>';
+                }
                 alert('Firebase SDK not loaded. Please check firebase-config.js and ensure Firebase SDK is included in index.html');
                 return;
             }
             
-            await initFirestore();
-            
-            // 加载初始数据
-            menuItems = await loadMenuItemsFromFirestore();
-            allOrders = await loadOrdersFromFirestore();
-            
-            // 设置实时监听
-            unsubscribeMenuItems = subscribeToMenuItems((items) => {
-                menuItems = items;
-                renderMenu();
-                renderItemsList();
-            });
-            
-            unsubscribeOrders = subscribeToOrders((orders) => {
-                allOrders = orders;
-                // 如果当前在订单页面，刷新显示
-                if (document.getElementById('ordersPage').classList.contains('active')) {
-                    renderAllOrders();
+            try {
+                await initFirestore();
+                console.log('Firestore initialized');
+                
+                // 加载初始数据（使用 try-catch 确保单个失败不影响其他）
+                try {
+                    menuItems = await loadMenuItemsFromFirestore();
+                    console.log('Menu items loaded:', menuItems.length, 'items');
+                } catch (menuError) {
+                    console.error('Failed to load menu items:', menuError);
+                    menuItems = [];
+                    // 显示用户友好的错误提示
+                    if (menuError.message && menuError.message.includes('index')) {
+                        console.warn('Firestore index may be missing. Data will still load but may be slower.');
+                    } else {
+                        console.warn('Menu items loading failed, but continuing with empty menu');
+                    }
                 }
-            });
-            
-            console.log('Firebase initialized and real-time sync enabled');
+                
+                try {
+                    allOrders = await loadOrdersFromFirestore();
+                    console.log('Orders loaded:', allOrders.length, 'orders');
+                } catch (ordersError) {
+                    console.error('Failed to load orders:', ordersError);
+                    allOrders = [];
+                    // 显示用户友好的错误提示
+                    if (ordersError.message && ordersError.message.includes('index')) {
+                        console.warn('Firestore index may be missing. Data will still load but may be slower.');
+                    } else {
+                        console.warn('Orders loading failed, but continuing with empty orders');
+                    }
+                }
+                
+                // 设置实时监听
+                try {
+                    unsubscribeMenuItems = subscribeToMenuItems((items) => {
+                        menuItems = items;
+                        console.log('Menu items updated via real-time sync:', items.length, 'items');
+                        renderMenu();
+                        renderItemsList();
+                    });
+                    
+                    unsubscribeOrders = subscribeToOrders((orders) => {
+                        allOrders = orders;
+                        console.log('Orders updated via real-time sync:', orders.length, 'orders');
+                        // 如果当前在订单页面，刷新显示
+                        if (document.getElementById('ordersPage').classList.contains('active')) {
+                            renderAllOrders();
+                        }
+                    });
+                    
+                    console.log('Firebase initialized and real-time sync enabled');
+                } catch (subscribeError) {
+                    console.error('Failed to set up real-time subscriptions:', subscribeError);
+                    console.warn('Continuing without real-time sync');
+                }
+            } catch (firebaseError) {
+                console.error('Firebase initialization failed:', firebaseError);
+                if (menuContainer) {
+                    menuContainer.innerHTML = '<div class="error-message">无法连接到 Firebase 数据库。请检查网络连接和 Firebase 配置。<br><br>错误信息: ' + firebaseError.message + '</div>';
+                } else {
+                    alert('无法连接到 Firebase 数据库。请检查网络连接和 Firebase 配置。\n\n错误信息: ' + firebaseError.message);
+                }
+                // 使用空数据继续，避免页面完全无法使用
+                menuItems = [];
+                allOrders = [];
+            }
         } else {
             // 使用 IndexedDB（本地存储）
             await initDB();

@@ -79,9 +79,17 @@ async function loadMenuItemsFromFirestore() {
     }
     
     try {
-        const snapshot = await firestoreDB.collection(COLLECTION_MENU)
-            .orderBy('id')
-            .get();
+        // 先尝试使用 orderBy 查询
+        let snapshot;
+        try {
+            snapshot = await firestoreDB.collection(COLLECTION_MENU)
+                .orderBy('id')
+                .get();
+        } catch (orderByError) {
+            // 如果 orderBy 失败（可能是缺少索引），尝试不使用 orderBy
+            console.warn('orderBy failed, trying without orderBy:', orderByError);
+            snapshot = await firestoreDB.collection(COLLECTION_MENU).get();
+        }
         
         const items = [];
         snapshot.forEach(doc => {
@@ -97,11 +105,20 @@ async function loadMenuItemsFromFirestore() {
             });
         });
         
+        // 如果没有 orderBy，手动按 id 排序
+        items.sort((a, b) => {
+            const idA = Number(a.id) || 0;
+            const idB = Number(b.id) || 0;
+            return idA - idB;
+        });
+        
         console.log('Menu items loaded from Firestore:', items.length, 'items');
         return items;
     } catch (error) {
         console.error('Failed to load menu items from Firestore:', error);
-        throw error;
+        // 返回空数组而不是抛出错误，避免阻止页面加载
+        console.warn('Returning empty menu items array due to error');
+        return [];
     }
 }
 
@@ -157,9 +174,17 @@ async function loadOrdersFromFirestore() {
     }
     
     try {
-        const snapshot = await firestoreDB.collection(COLLECTION_ORDERS)
-            .orderBy('createdAt', 'desc')
-            .get();
+        // 先尝试使用 orderBy 查询（需要索引）
+        let snapshot;
+        try {
+            snapshot = await firestoreDB.collection(COLLECTION_ORDERS)
+                .orderBy('createdAt', 'desc')
+                .get();
+        } catch (orderByError) {
+            // 如果 orderBy 失败（可能是缺少索引或字段），尝试不使用 orderBy
+            console.warn('orderBy failed, trying without orderBy:', orderByError);
+            snapshot = await firestoreDB.collection(COLLECTION_ORDERS).get();
+        }
         
         const orders = [];
         snapshot.forEach(doc => {
@@ -173,11 +198,20 @@ async function loadOrdersFromFirestore() {
             });
         });
         
+        // 如果没有 createdAt 字段，使用 date 字段排序（降序）
+        orders.sort((a, b) => {
+            const dateA = a.date || '';
+            const dateB = b.date || '';
+            return dateB.localeCompare(dateA);
+        });
+        
         console.log('Orders loaded from Firestore:', orders.length, 'orders');
         return orders;
     } catch (error) {
         console.error('Failed to load orders from Firestore:', error);
-        throw error;
+        // 返回空数组而不是抛出错误，避免阻止页面加载
+        console.warn('Returning empty orders array due to error');
+        return [];
     }
 }
 
@@ -217,23 +251,97 @@ function subscribeToOrders(callback) {
         return () => {};
     }
     
-    return firestoreDB.collection(COLLECTION_ORDERS)
-        .orderBy('createdAt', 'desc')
-        .onSnapshot((snapshot) => {
-            const orders = [];
-            snapshot.forEach(doc => {
-                const data = doc.data();
-                orders.push({
-                    id: data.id,
-                    name: data.name || '',
-                    order: data.order || '',
-                    items: data.items || [],
-                    date: data.date || ''
+    // 先尝试使用 orderBy 监听
+    let unsubscribe;
+    let fallbackUnsubscribe = null;
+    
+    try {
+        unsubscribe = firestoreDB.collection(COLLECTION_ORDERS)
+            .orderBy('createdAt', 'desc')
+            .onSnapshot((snapshot) => {
+                const orders = [];
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    orders.push({
+                        id: data.id,
+                        name: data.name || '',
+                        order: data.order || '',
+                        items: data.items || [],
+                        date: data.date || ''
+                    });
                 });
+                // 如果没有 createdAt 字段，使用 date 字段排序
+                orders.sort((a, b) => {
+                    const dateA = a.date || '';
+                    const dateB = b.date || '';
+                    return dateB.localeCompare(dateA);
+                });
+                callback(orders);
+            }, (error) => {
+                console.error('Error listening to orders with orderBy:', error);
+                // 如果 orderBy 失败，取消当前订阅并使用不带 orderBy 的监听
+                if (unsubscribe) {
+                    unsubscribe();
+                }
+                console.warn('Falling back to subscription without orderBy');
+                fallbackUnsubscribe = firestoreDB.collection(COLLECTION_ORDERS)
+                    .onSnapshot((snapshot) => {
+                        const orders = [];
+                        snapshot.forEach(doc => {
+                            const data = doc.data();
+                            orders.push({
+                                id: data.id,
+                                name: data.name || '',
+                                order: data.order || '',
+                                items: data.items || [],
+                                date: data.date || ''
+                            });
+                        });
+                        orders.sort((a, b) => {
+                            const dateA = a.date || '';
+                            const dateB = b.date || '';
+                            return dateB.localeCompare(dateA);
+                        });
+                        callback(orders);
+                    }, (fallbackError) => {
+                        console.error('Error listening to orders:', fallbackError);
+                    });
             });
-            callback(orders);
-        }, (error) => {
-            console.error('Error listening to orders:', error);
-        });
+    } catch (error) {
+        console.error('Failed to set up order subscription:', error);
+        // 如果设置失败，使用不带 orderBy 的监听
+        unsubscribe = firestoreDB.collection(COLLECTION_ORDERS)
+            .onSnapshot((snapshot) => {
+                const orders = [];
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    orders.push({
+                        id: data.id,
+                        name: data.name || '',
+                        order: data.order || '',
+                        items: data.items || [],
+                        date: data.date || ''
+                    });
+                });
+                orders.sort((a, b) => {
+                    const dateA = a.date || '';
+                    const dateB = b.date || '';
+                    return dateB.localeCompare(dateA);
+                });
+                callback(orders);
+            }, (fallbackError) => {
+                console.error('Error listening to orders:', fallbackError);
+            });
+    }
+    
+    // 返回取消订阅函数
+    return () => {
+        if (unsubscribe) {
+            unsubscribe();
+        }
+        if (fallbackUnsubscribe) {
+            fallbackUnsubscribe();
+        }
+    };
 }
 
