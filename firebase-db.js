@@ -254,13 +254,27 @@ async function loadMenuItemsFromFirestore() {
                 .get();
         } catch (orderByError) {
             // 如果 orderBy 失败（可能是缺少索引），尝试不使用 orderBy
-            console.warn('orderBy failed, trying without orderBy:', orderByError);
+            console.warn('⚠️ orderBy failed, trying without orderBy:', orderByError);
+            console.warn('错误详情:', {
+                code: orderByError.code,
+                message: orderByError.message,
+                name: orderByError.name
+            });
             try {
                 snapshot = await firestoreDB.collection(COLLECTION_MENU).get();
             } catch (getError) {
                 // 如果基本查询也失败，抛出错误
-                console.error('Failed to get menu items from Firestore:', getError);
-                throw new Error('无法从 Firestore 加载菜单数据: ' + getError.message);
+                console.error('❌ Failed to get menu items from Firestore:', getError);
+                console.error('错误详情:', {
+                    code: getError.code,
+                    message: getError.message,
+                    name: getError.name
+                });
+                // 保留原始错误的 code 属性
+                const enhancedError = new Error('无法从 Firestore 加载菜单数据: ' + getError.message);
+                enhancedError.code = getError.code;
+                enhancedError.originalError = getError;
+                throw enhancedError;
             }
         }
         
@@ -293,7 +307,30 @@ async function loadMenuItemsFromFirestore() {
         }
         return items;
     }, 3, 1000).catch(error => {
-        console.error('Failed to load menu items from Firestore:', error);
+        console.error('❌ Failed to load menu items from Firestore:', error);
+        console.error('错误详情:', {
+            code: error.code,
+            message: error.message,
+            name: error.name,
+            url: typeof window !== 'undefined' ? window.location.href : 'N/A',
+            domain: typeof window !== 'undefined' ? window.location.hostname : 'N/A'
+        });
+        
+        // 如果是权限错误，提供更详细的提示
+        if (error.code === 'permission-denied') {
+            const isNetlifyDomain = typeof window !== 'undefined' && window.location.hostname.includes('netlify.app');
+            if (isNetlifyDomain) {
+                console.error('⚠️ 权限被拒绝 - 可能是 Firebase 授权域名未配置');
+                console.error('请检查：Firebase Console → Authentication → Settings → Authorized domains');
+                console.error('需要添加的域名:', window.location.hostname);
+            }
+        }
+        
+        // 保留原始错误的 code 属性
+        if (!error.code && error.originalError && error.originalError.code) {
+            error.code = error.originalError.code;
+        }
+        
         // 抛出错误以便上层处理
         throw error;
     });

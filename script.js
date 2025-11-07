@@ -166,16 +166,55 @@ document.addEventListener('DOMContentLoaded', async function() {
                     console.error('错误详情:', {
                         message: menuError.message,
                         stack: menuError.stack,
-                        name: menuError.name
+                        name: menuError.name,
+                        code: menuError.code,
+                        url: window.location.href,
+                        domain: window.location.hostname
                     });
                     menuItems = [];
                     menuLoadError = menuError;
+                    
+                    // 检查是否是授权域名问题
+                    const isNetlifyDomain = window.location.hostname.includes('netlify.app');
+                    const isPermissionDenied = menuError.code === 'permission-denied' || 
+                                             menuError.message.includes('permission-denied');
+                    const isNetworkError = menuError.code === 'unavailable' || 
+                                         menuError.message.includes('Failed to fetch') ||
+                                         menuError.message.includes('network');
+                    
                     // 显示用户友好的错误提示
                     const errorMsg = getErrorMessage(menuError, '菜单数据');
+                    let diagnosticInfo = '';
+                    
+                    if (isNetlifyDomain && (isPermissionDenied || isNetworkError)) {
+                        diagnosticInfo = '<div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: left;">' +
+                            '<strong style="color: #856404;">⚠️ Netlify 部署常见问题：</strong><br>' +
+                            '<ol style="margin: 10px 0 0 20px; color: #856404;">' +
+                            '<li><strong>Firebase 授权域名未配置</strong><br>' +
+                            '请访问 Firebase Console → Authentication → Settings → Authorized domains<br>' +
+                            '添加域名：<code style="background: #f0f0f0; padding: 2px 5px;">' + window.location.hostname + '</code></li>' +
+                            '<li><strong>Firestore 安全规则</strong><br>' +
+                            '请检查 Firebase Console → Firestore Database → Rules<br>' +
+                            '确保规则允许读取：<code style="background: #f0f0f0; padding: 2px 5px;">allow read: if true;</code></li>' +
+                            '</ol>' +
+                            '<p style="margin-top: 10px; color: #856404;"><small>📖 详细指南：查看项目中的 <code>NETLIFY_DATA_LOSS_FIX.md</code> 文件</small></p>' +
+                            '</div>';
+                    }
+                    
                     if (menuContainer) {
                         menuContainer.innerHTML = '<div class="error-message">' + errorMsg + 
+                            diagnosticInfo +
                             '<br><br><button onclick="location.reload()" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">🔄 重试</button>' +
-                            '<br><br><small style="color: #999;">如果问题持续，请检查：<br>1. 网络连接<br>2. Firebase 配置<br>3. Firestore 安全规则</small></div>';
+                            '<br><br><details style="margin-top: 15px; text-align: left;"><summary style="cursor: pointer; color: #4CAF50;">🔍 查看详细诊断信息</summary><pre style="background: #2a2a2a; padding: 10px; border-radius: 5px; overflow-x: auto; margin-top: 10px; font-size: 12px; text-align: left;">' +
+                            '当前域名: ' + window.location.hostname + '\n' +
+                            '完整 URL: ' + window.location.href + '\n' +
+                            'Firebase 配置: ' + (typeof firebase !== 'undefined' ? '已加载 ✓' : '未加载 ✗') + '\n' +
+                            'Firestore 初始化: ' + (firestoreDB ? '已初始化 ✓' : '未初始化 ✗') + '\n' +
+                            '错误代码: ' + (menuError.code || 'N/A') + '\n' +
+                            '错误消息: ' + menuError.message + '\n' +
+                            '错误堆栈: ' + (menuError.stack || 'N/A') +
+                            '</pre></details>' +
+                            '<br><br><small style="color: #999;">如果问题持续，请检查：<br>1. 网络连接<br>2. Firebase 配置<br>3. Firestore 安全规则<br>4. Firebase 授权域名（Netlify 部署）</small></div>';
                     }
                 }
                 
@@ -238,19 +277,58 @@ document.addEventListener('DOMContentLoaded', async function() {
                 console.log('✅ Firebase 数据加载完成');
             } catch (firebaseError) {
                 console.error('Firebase initialization failed:', firebaseError);
+                console.error('错误详情:', {
+                    message: firebaseError.message,
+                    stack: firebaseError.stack,
+                    name: firebaseError.name,
+                    code: firebaseError.code,
+                    url: window.location.href,
+                    domain: window.location.hostname
+                });
+                
                 const errorMsg = getErrorMessage(firebaseError, 'Firebase 数据库');
+                
+                // 检查是否是授权域名问题
+                const isNetlifyDomain = window.location.hostname.includes('netlify.app');
+                const isPermissionDenied = firebaseError.code === 'permission-denied' || 
+                                         firebaseError.message.includes('permission-denied');
+                const isNetworkError = firebaseError.code === 'unavailable' || 
+                                     firebaseError.message.includes('Failed to fetch') ||
+                                     firebaseError.message.includes('network');
+                
+                let diagnosticInfo = '';
+                if (isNetlifyDomain && (isPermissionDenied || isNetworkError)) {
+                    diagnosticInfo = '<div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: left;">' +
+                        '<strong style="color: #856404;">⚠️ Netlify 部署常见问题：</strong><br>' +
+                        '<ol style="margin: 10px 0 0 20px; color: #856404;">' +
+                        '<li><strong>Firebase 授权域名未配置</strong><br>' +
+                        '请访问 Firebase Console → Authentication → Settings → Authorized domains<br>' +
+                        '添加域名：<code style="background: #f0f0f0; padding: 2px 5px;">' + window.location.hostname + '</code></li>' +
+                        '<li><strong>Firestore 安全规则</strong><br>' +
+                        '请检查 Firebase Console → Firestore Database → Rules<br>' +
+                        '确保规则允许读取：<code style="background: #f0f0f0; padding: 2px 5px;">allow read: if true;</code></li>' +
+                        '</ol>' +
+                        '<p style="margin-top: 10px; color: #856404;"><small>📖 详细指南：查看项目中的 <code>NETLIFY_DATA_LOSS_FIX.md</code> 文件</small></p>' +
+                        '</div>';
+                }
+                
                 if (menuContainer) {
                     menuContainer.innerHTML = '<div class="error-message">' + errorMsg + 
+                        diagnosticInfo +
                         '<br><br><button onclick="location.reload()" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">🔄 重试</button>' +
-                        '<br><br><details style="margin-top: 15px;"><summary style="cursor: pointer; color: #4CAF50;">🔍 查看诊断信息</summary><pre style="background: #2a2a2a; padding: 10px; border-radius: 5px; overflow-x: auto; margin-top: 10px; font-size: 12px;">' +
+                        '<br><br><details style="margin-top: 15px; text-align: left;"><summary style="cursor: pointer; color: #4CAF50;">🔍 查看详细诊断信息</summary><pre style="background: #2a2a2a; padding: 10px; border-radius: 5px; overflow-x: auto; margin-top: 10px; font-size: 12px; text-align: left;">' +
+                        '当前域名: ' + window.location.hostname + '\n' +
+                        '完整 URL: ' + window.location.href + '\n' +
                         'User Agent: ' + navigator.userAgent + '\n' +
-                        'URL: ' + window.location.href + '\n' +
-                        'Firebase Config: ' + (typeof firebase !== 'undefined' ? '已加载' : '未加载') + '\n' +
-                        '错误: ' + firebaseError.message + '\n' +
-                        '堆栈: ' + (firebaseError.stack || 'N/A') +
+                        'Firebase Config: ' + (typeof firebase !== 'undefined' ? '已加载 ✓' : '未加载 ✗') + '\n' +
+                        'Firestore 初始化: ' + (firestoreDB ? '已初始化 ✓' : '未初始化 ✗') + '\n' +
+                        '错误代码: ' + (firebaseError.code || 'N/A') + '\n' +
+                        '错误消息: ' + firebaseError.message + '\n' +
+                        '错误堆栈: ' + (firebaseError.stack || 'N/A') +
                         '</pre></details></div>';
                 } else {
-                    alert('无法连接到 Firebase 数据库。\n\n' + errorMsg);
+                    alert('无法连接到 Firebase 数据库。\n\n' + errorMsg + 
+                        (isNetlifyDomain ? '\n\n⚠️ 如果是 Netlify 部署，请检查 Firebase 授权域名配置。' : ''));
                 }
                 // 使用空数据继续，避免页面完全无法使用
                 menuItems = [];
@@ -383,12 +461,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     const importDataFile = document.getElementById('importDataFile');
     if (importDataFile) {
         importDataFile.addEventListener('change', handleDataImport);
-    }
-    
-    // Bind clear cache button
-    const clearCacheBtn = document.getElementById('clearCacheBtn');
-    if (clearCacheBtn) {
-        clearCacheBtn.addEventListener('click', clearCache);
     }
     
     // Save data before page unload to prevent data loss
@@ -2291,126 +2363,3 @@ function handleDataImport(event) {
     reader.readAsText(file);
 }
 
-// Clear all cache (localStorage, IndexedDB, and Firebase cache)
-async function clearCache() {
-    // Double confirmation for safety
-    const confirmMessage = '⚠️ Warning: This will clear all cached data!\n\n' +
-        'This includes:\n' +
-        '• localStorage data\n' +
-        '• IndexedDB data\n' +
-        '• Firebase local cache\n\n' +
-        '⚠️ Note: This will NOT delete data from Firebase server.\n' +
-        'Data will be reloaded from Firebase on next page refresh.\n\n' +
-        'Are you sure you want to continue?';
-    
-    if (!confirm(confirmMessage)) {
-        return;
-    }
-    
-    const secondConfirm = confirm('⚠️ Final confirmation: Clear all cache?\n\n' +
-        'This action cannot be undone. The page will refresh after clearing cache.');
-    
-    if (!secondConfirm) {
-        return;
-    }
-    
-    try {
-        console.log('🗑️ Starting cache clearing process...');
-        
-        // 1. Clear localStorage
-        console.log('Clearing localStorage...');
-        localStorage.removeItem('menuItems');
-        localStorage.removeItem('menuOrders');
-        console.log('✅ localStorage cleared');
-        
-        // 2. Clear IndexedDB
-        if (db) {
-            console.log('Clearing IndexedDB...');
-            try {
-                // Clear menuItems store
-                await new Promise((resolve, reject) => {
-                    const transaction = db.transaction([STORE_MENU], 'readwrite');
-                    const store = transaction.objectStore(STORE_MENU);
-                    const clearRequest = store.clear();
-                    
-                    clearRequest.onsuccess = () => {
-                        console.log('✅ IndexedDB menuItems cleared');
-                        resolve();
-                    };
-                    
-                    clearRequest.onerror = () => {
-                        console.error('Failed to clear IndexedDB menuItems:', clearRequest.error);
-                        reject(clearRequest.error);
-                    };
-                });
-                
-                // Clear orders store
-                await new Promise((resolve, reject) => {
-                    const transaction = db.transaction([STORE_ORDERS], 'readwrite');
-                    const store = transaction.objectStore(STORE_ORDERS);
-                    const clearRequest = store.clear();
-                    
-                    clearRequest.onsuccess = () => {
-                        console.log('✅ IndexedDB orders cleared');
-                        resolve();
-                    };
-                    
-                    clearRequest.onerror = () => {
-                        console.error('Failed to clear IndexedDB orders:', clearRequest.error);
-                        reject(clearRequest.error);
-                    };
-                });
-            } catch (error) {
-                console.warn('⚠️ Failed to clear IndexedDB:', error);
-                // Continue even if IndexedDB clearing fails
-            }
-        }
-        
-        // 3. Clear Firebase Firestore cache (if using Firebase)
-        if (USE_FIREBASE && typeof firebase !== 'undefined') {
-            console.log('Clearing Firebase Firestore cache...');
-            try {
-                const db = firebase.firestore();
-                
-                // Disable network first
-                await db.disableNetwork();
-                console.log('✅ Firebase network disabled');
-                
-                // Clear persistence (this clears the local cache)
-                // Note: clearPersistence() requires all listeners to be unsubscribed first
-                // We'll try to clear it, but if it fails due to active listeners, that's okay
-                try {
-                    await db.clearPersistence();
-                    console.log('✅ Firebase persistence cleared');
-                } catch (persistenceError) {
-                    // This is expected if there are active listeners
-                    console.warn('⚠️ Could not clear Firebase persistence (may have active listeners):', persistenceError.message);
-                    console.log('ℹ️ This is normal if the app is actively using Firebase. Cache will be cleared on next page load.');
-                }
-                
-                // Re-enable network
-                await db.enableNetwork();
-                console.log('✅ Firebase network re-enabled');
-            } catch (error) {
-                console.warn('⚠️ Failed to clear Firebase cache:', error);
-                // Try to re-enable network even if clearing failed
-                try {
-                    const db = firebase.firestore();
-                    await db.enableNetwork();
-                } catch (e) {
-                    console.error('Failed to re-enable Firebase network:', e);
-                }
-            }
-        }
-        
-        console.log('✅ Cache clearing completed');
-        alert('✅ Cache cleared successfully!\n\nThe page will now refresh to reload data from Firebase.');
-        
-        // Refresh the page to reload data
-        window.location.reload();
-        
-    } catch (error) {
-        console.error('❌ Failed to clear cache:', error);
-        alert('Failed to clear cache: ' + (error.message || 'Unknown error') + '\n\nPlease try refreshing the page manually.');
-    }
-}
