@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="format-detection" content="telephone=no">
+    <title>Menu Selection</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="top-nav">
+        <button id="viewOrdersBtn" class="nav-btn view-orders-btn">View Orders</button>
+        <button id="manageBtn" class="nav-btn">Manage Menu</button>
+        <button id="viewMenuBtn" class="nav-btn" style="display: none;">View Menu</button>
+    </nav>
+
+    <!-- Menu Selection Page -->
+    <div id="menuPage" class="page active">
+        <div class="container">
+            <h1>Ashley Menu Selection System</h1>
+            <div id="menuContainer" class="menu-container">
+                <!-- Menu items will be dynamically generated -->
+            </div>
+            <div id="selectedItems" class="selected-items">
+                <h2>Selected Items</h2>
+                <div id="selectedList"></div>
+                <div class="name-input-section">
+                    <input type="text" id="customerName" placeholder="Enter your name" />
+                    <button id="confirmBtn" class="confirm-btn">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Management Page -->
+    <div id="managePage" class="page">
+        <div class="container">
+            <h1>Manage Menu Items</h1>
+            
+            <!-- Data Backup & Restore Section -->
+            <div class="data-management-section">
+                <h2>Data Backup & Restore</h2>
+                <p style="color: #cccccc; margin-bottom: 15px;">Export all data (menu items and orders) to backup, or import from a backup file. This allows you to restore data when switching browsers.</p>
+                <div class="data-management-buttons">
+                    <button id="exportAllDataBtn" class="export-btn">📤 Export All Data</button>
+                    <label for="importDataFile" class="import-btn-label">
+                        <input type="file" id="importDataFile" accept=".json" style="display: none;" />
+                        <span class="import-btn">📥 Import Data</span>
+                    </label>
+                </div>
+            </div>
+            
+            <!-- Add New Item Form -->
+            <div class="add-item-form">
+                <h2>Add New Item</h2>
+                <div class="form-group">
+                    <label for="itemImage">Image (recommended 1:1 ratio)</label>
+                    <div class="image-upload-container">
+                        <input type="file" id="itemImage" accept="image/*" style="display: none;" />
+                        <button type="button" id="imageUploadBtn" class="image-upload-btn">
+                            📷 Click to select image file
+                        </button>
+                        <div id="imagePreview" class="image-preview"></div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="itemCategory">Category *</label>
+                    <select id="itemCategory" required>
+                        <option value="">Select a category</option>
+                        <option value="Main Course">Main Course</option>
+                        <option value="Salad">Salad</option>
+                        <option value="Snack">Snack</option>
+                        <option value="Drink">Drink</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="itemName">Name *</label>
+                    <input type="text" id="itemName" placeholder="Item name" required />
+                </div>
+                <div class="form-group">
+                    <label for="itemSubtitle">Subtitle</label>
+                    <input type="text" id="itemSubtitle" placeholder="Item subtitle" />
+                </div>
+                <div class="form-group">
+                    <label for="itemDescription">Description</label>
+                    <textarea id="itemDescription" placeholder="Item description" rows="3"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="itemPrice">Price</label>
+                    <input type="text" id="itemPrice" placeholder="e.g., $12.99" />
+                </div>
+                <div class="form-actions">
+                    <button id="addItemBtn" class="add-btn">Add Item</button>
+                    <button id="cancelEditBtn" class="cancel-btn" style="display: none;">Cancel</button>
+                </div>
+            </div>
+
+            <!-- Existing Items List -->
+            <div class="items-list-section">
+                <h2>Existing Items</h2>
+                <div id="itemsList" class="items-list">
+                    <!-- Items will be dynamically generated -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Page -->
+    <div id="summaryPage" class="page">
+        <div class="container">
+            <div class="summary-header">
+                <h1>Order Summary</h1>
+                <button id="downloadBtn" class="download-btn">📥 Download</button>
+            </div>
+            <div id="summaryContent" class="summary-content">
+                <!-- Summary content will be dynamically generated -->
+            </div>
+            <button id="backBtn" class="back-btn">Back to Menu</button>
+        </div>
+    </div>
+
+    <!-- Orders Page -->
+    <div id="ordersPage" class="page">
+        <div class="container">
+            <div class="orders-header">
+                <h1>All Orders</h1>
+                <button id="downloadAllOrdersBtn" class="download-btn">📥 Download</button>
+            </div>
+            <div class="search-section">
+                <input type="text" id="orderSearchInput" class="search-input" placeholder="🔍 Search by customer name..." />
+            </div>
+            <div id="ordersContent" class="orders-content">
+                <!-- Orders content will be dynamically generated -->
+            </div>
+            <button id="backToMenuFromOrdersBtn" class="back-btn">Back to Menu</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
+
