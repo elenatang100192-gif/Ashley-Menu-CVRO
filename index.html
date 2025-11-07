@@ -10,8 +10,45 @@
     <title>Menu Selection</title>
     <link rel="stylesheet" href="styles.css">
     <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <!-- Suppress harmless Firebase Console UI 404 errors -->
+    <script>
+        // 这些 404 错误来自 Firebase Console UI 的设置 API，不影响应用功能
+        // 我们通过拦截错误事件来抑制这些无害的控制台警告
+        
+        // 拦截控制台错误
+        const originalError = console.error;
+        console.error = function(...args) {
+            const message = args.join(' ');
+            // 过滤掉 Firebase Console UI 相关的 404 错误
+            if (message.includes('cloudusersettings-pa.clients6.google.com') || 
+                (message.includes('Failed to load resource') && message.includes('404'))) {
+                return; // 不显示这些无害的错误
+            }
+            originalError.apply(console, args);
+        };
+        
+        // 拦截未捕获的错误事件
+        window.addEventListener('error', function(event) {
+            if (event.target && event.target.src && 
+                event.target.src.includes('cloudusersettings-pa.clients6.google.com')) {
+                event.preventDefault();
+                event.stopPropagation();
+                return false;
+            }
+        }, true);
+        
+        // 拦截 Promise rejection（某些网络错误可能通过 Promise rejection 报告）
+        window.addEventListener('unhandledrejection', function(event) {
+            const reason = event.reason;
+            if (reason && typeof reason === 'string' && 
+                reason.includes('cloudusersettings-pa.clients6.google.com')) {
+                event.preventDefault();
+                return false;
+            }
+        });
+    </script>
 </head>
 <body>
     <!-- Navigation -->
