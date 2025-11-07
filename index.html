@@ -8,6 +8,9 @@
     <meta name="format-detection" content="telephone=no">
     <title>Menu Selection</title>
     <link rel="stylesheet" href="styles.css">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
     <!-- Navigation -->
@@ -139,6 +142,11 @@
         </div>
     </div>
 
+    <!-- Firebase Configuration (must be loaded before script.js) -->
+    <script src="firebase-config.js"></script>
+    <!-- Firebase Database Module -->
+    <script src="firebase-db.js"></script>
+    <!-- Main Application Script -->
     <script src="script.js"></script>
 </body>
 </html>

@@ -32,12 +32,19 @@ let allOrders = [];
 // Currently editing item ID (null if not editing)
 let editingItemId = null;
 
+// 数据库配置：设置为 true 使用 Firebase，false 使用 IndexedDB（本地存储）
+const USE_FIREBASE = true; // 改为 true 启用 Firebase 数据共享
+
 // IndexedDB database instance
 let db = null;
 const DB_NAME = 'MenuAppDB';
 const DB_VERSION = 1;
 const STORE_MENU = 'menuItems';
 const STORE_ORDERS = 'orders';
+
+// Firebase 订阅取消函数
+let unsubscribeMenuItems = null;
+let unsubscribeOrders = null;
 
 // Initialize IndexedDB
 function initDB() {
@@ -76,15 +83,46 @@ function initDB() {
 // Initialize page
 document.addEventListener('DOMContentLoaded', async function() {
     try {
-        // Initialize IndexedDB first
-        await initDB();
-        
-        // Migrate data from localStorage to IndexedDB if needed
-        await migrateFromLocalStorage();
-        
-        // Load data from IndexedDB
-        await loadMenuFromStorage();
-        await loadOrdersFromStorage();
+        if (USE_FIREBASE) {
+            // 使用 Firebase
+            if (typeof firebase === 'undefined') {
+                alert('Firebase SDK not loaded. Please check firebase-config.js and ensure Firebase SDK is included in index.html');
+                return;
+            }
+            
+            await initFirestore();
+            
+            // 加载初始数据
+            menuItems = await loadMenuItemsFromFirestore();
+            allOrders = await loadOrdersFromFirestore();
+            
+            // 设置实时监听
+            unsubscribeMenuItems = subscribeToMenuItems((items) => {
+                menuItems = items;
+                renderMenu();
+                renderItemsList();
+            });
+            
+            unsubscribeOrders = subscribeToOrders((orders) => {
+                allOrders = orders;
+                // 如果当前在订单页面，刷新显示
+                if (document.getElementById('ordersPage').classList.contains('active')) {
+                    renderAllOrders();
+                }
+            });
+            
+            console.log('Firebase initialized and real-time sync enabled');
+        } else {
+            // 使用 IndexedDB（本地存储）
+            await initDB();
+            
+            // Migrate data from localStorage to IndexedDB if needed
+            await migrateFromLocalStorage();
+            
+            // Load data from IndexedDB
+            await loadMenuFromStorage();
+            await loadOrdersFromStorage();
+        }
         
         renderMenu();
         renderSelectedItems();
@@ -1447,150 +1485,196 @@ async function saveOrdersToIndexedDB(orders) {
     });
 }
 
-// Save menu to IndexedDB (permanent storage)
+// Save menu to storage (Firebase or IndexedDB)
 async function saveMenuToStorage() {
     try {
-        if (!db) {
-            console.warn('IndexedDB not available, falling back to localStorage');
-            const data = JSON.stringify(menuItems);
-            localStorage.setItem('menuItems', data);
+        if (USE_FIREBASE) {
+            // 使用 Firebase
+            await saveMenuItemsToFirestore(menuItems);
+            console.log('Menu saved to Firestore:', menuItems.length, 'items');
+            return true;
+        } else {
+            // 使用 IndexedDB
+            if (!db) {
+                console.warn('IndexedDB not available, falling back to localStorage');
+                const data = JSON.stringify(menuItems);
+                localStorage.setItem('menuItems', data);
+                return true;
+            }
+            
+            await saveMenuItemsToIndexedDB(menuItems);
+            console.log('Menu saved to IndexedDB:', menuItems.length, 'items');
             return true;
         }
-        
-        await saveMenuItemsToIndexedDB(menuItems);
-        console.log('Menu saved to IndexedDB:', menuItems.length, 'items');
-        return true;
     } catch (e) {
         console.error('Failed to save menu:', e);
-        // Fallback to localStorage
-        try {
-            const data = JSON.stringify(menuItems);
-            localStorage.setItem('menuItems', data);
-            return true;
-        } catch (fallbackError) {
-            throw new Error('Failed to save menu data');
+        if (!USE_FIREBASE) {
+            // Fallback to localStorage only for IndexedDB mode
+            try {
+                const data = JSON.stringify(menuItems);
+                localStorage.setItem('menuItems', data);
+                return true;
+            } catch (fallbackError) {
+                throw new Error('Failed to save menu data');
+            }
+        } else {
+            throw e;
         }
     }
 }
 
-// Load menu from IndexedDB
+// Load menu from storage (Firebase or IndexedDB)
 async function loadMenuFromStorage() {
     try {
-        if (!db) {
-            console.warn('IndexedDB not available, loading from localStorage');
-            const saved = localStorage.getItem('menuItems');
-            if (saved) {
-                menuItems = JSON.parse(saved);
-            } else {
-                menuItems = [];
-            }
+        if (USE_FIREBASE) {
+            // 使用 Firebase
+            menuItems = await loadMenuItemsFromFirestore();
             return;
-        }
-        
-        await new Promise((resolve, reject) => {
-            const transaction = db.transaction([STORE_MENU], 'readonly');
-            const store = transaction.objectStore(STORE_MENU);
-            const request = store.getAll();
-            
-            request.onsuccess = () => {
-                menuItems = request.result || [];
-                console.log('Menu loaded from IndexedDB:', menuItems.length, 'items');
-                resolve();
-            };
-            
-            request.onerror = () => {
-                console.error('Failed to load menu from IndexedDB:', request.error);
-                // Fallback to localStorage
+        } else {
+            // 使用 IndexedDB
+            if (!db) {
+                console.warn('IndexedDB not available, loading from localStorage');
                 const saved = localStorage.getItem('menuItems');
                 if (saved) {
                     menuItems = JSON.parse(saved);
                 } else {
                     menuItems = [];
                 }
-                resolve(); // Still resolve to continue
-            };
-        });
+                return;
+            }
+            
+            await new Promise((resolve, reject) => {
+                const transaction = db.transaction([STORE_MENU], 'readonly');
+                const store = transaction.objectStore(STORE_MENU);
+                const request = store.getAll();
+                
+                request.onsuccess = () => {
+                    menuItems = request.result || [];
+                    console.log('Menu loaded from IndexedDB:', menuItems.length, 'items');
+                    resolve();
+                };
+                
+                request.onerror = () => {
+                    console.error('Failed to load menu from IndexedDB:', request.error);
+                    // Fallback to localStorage
+                    const saved = localStorage.getItem('menuItems');
+                    if (saved) {
+                        menuItems = JSON.parse(saved);
+                    } else {
+                        menuItems = [];
+                    }
+                    resolve(); // Still resolve to continue
+                };
+            });
+        }
     } catch (e) {
         console.error('Failed to load menu:', e);
-        // Fallback to localStorage
-        const saved = localStorage.getItem('menuItems');
-        if (saved) {
-            menuItems = JSON.parse(saved);
+        if (!USE_FIREBASE) {
+            // Fallback to localStorage only for IndexedDB mode
+            const saved = localStorage.getItem('menuItems');
+            if (saved) {
+                menuItems = JSON.parse(saved);
+            } else {
+                menuItems = [];
+            }
         } else {
             menuItems = [];
         }
     }
 }
 
-// Save orders to IndexedDB (permanent storage)
+// Save orders to storage (Firebase or IndexedDB)
 async function saveOrdersToStorage() {
     try {
-        if (!db) {
-            console.warn('IndexedDB not available, falling back to localStorage');
-            const data = JSON.stringify(allOrders);
-            localStorage.setItem('menuOrders', data);
+        if (USE_FIREBASE) {
+            // 使用 Firebase
+            await saveOrdersToFirestore(allOrders);
+            console.log('Orders saved to Firestore:', allOrders.length, 'orders');
+            return true;
+        } else {
+            // 使用 IndexedDB
+            if (!db) {
+                console.warn('IndexedDB not available, falling back to localStorage');
+                const data = JSON.stringify(allOrders);
+                localStorage.setItem('menuOrders', data);
+                return true;
+            }
+            
+            await saveOrdersToIndexedDB(allOrders);
+            console.log('Orders saved to IndexedDB:', allOrders.length, 'orders');
             return true;
         }
-        
-        await saveOrdersToIndexedDB(allOrders);
-        console.log('Orders saved to IndexedDB:', allOrders.length, 'orders');
-        return true;
     } catch (e) {
         console.error('Failed to save orders:', e);
-        // Fallback to localStorage
-        try {
-            const data = JSON.stringify(allOrders);
-            localStorage.setItem('menuOrders', data);
-            return true;
-        } catch (fallbackError) {
-            throw new Error('Failed to save orders data');
+        if (!USE_FIREBASE) {
+            // Fallback to localStorage only for IndexedDB mode
+            try {
+                const data = JSON.stringify(allOrders);
+                localStorage.setItem('menuOrders', data);
+                return true;
+            } catch (fallbackError) {
+                throw new Error('Failed to save orders data');
+            }
+        } else {
+            throw e;
         }
     }
 }
 
-// Load orders from IndexedDB
+// Load orders from storage (Firebase or IndexedDB)
 async function loadOrdersFromStorage() {
     try {
-        if (!db) {
-            console.warn('IndexedDB not available, loading from localStorage');
-            const saved = localStorage.getItem('menuOrders');
-            if (saved) {
-                allOrders = JSON.parse(saved);
-            } else {
-                allOrders = [];
-            }
+        if (USE_FIREBASE) {
+            // 使用 Firebase
+            allOrders = await loadOrdersFromFirestore();
             return;
-        }
-        
-        await new Promise((resolve, reject) => {
-            const transaction = db.transaction([STORE_ORDERS], 'readonly');
-            const store = transaction.objectStore(STORE_ORDERS);
-            const request = store.getAll();
-            
-            request.onsuccess = () => {
-                allOrders = request.result || [];
-                console.log('Orders loaded from IndexedDB:', allOrders.length, 'orders');
-                resolve();
-            };
-            
-            request.onerror = () => {
-                console.error('Failed to load orders from IndexedDB:', request.error);
-                // Fallback to localStorage
+        } else {
+            // 使用 IndexedDB
+            if (!db) {
+                console.warn('IndexedDB not available, loading from localStorage');
                 const saved = localStorage.getItem('menuOrders');
                 if (saved) {
                     allOrders = JSON.parse(saved);
                 } else {
                     allOrders = [];
                 }
-                resolve(); // Still resolve to continue
-            };
-        });
+                return;
+            }
+            
+            await new Promise((resolve, reject) => {
+                const transaction = db.transaction([STORE_ORDERS], 'readonly');
+                const store = transaction.objectStore(STORE_ORDERS);
+                const request = store.getAll();
+                
+                request.onsuccess = () => {
+                    allOrders = request.result || [];
+                    console.log('Orders loaded from IndexedDB:', allOrders.length, 'orders');
+                    resolve();
+                };
+                
+                request.onerror = () => {
+                    console.error('Failed to load orders from IndexedDB:', request.error);
+                    // Fallback to localStorage
+                    const saved = localStorage.getItem('menuOrders');
+                    if (saved) {
+                        allOrders = JSON.parse(saved);
+                    } else {
+                        allOrders = [];
+                    }
+                    resolve(); // Still resolve to continue
+                };
+            });
+        }
     } catch (e) {
         console.error('Failed to load orders:', e);
-        // Fallback to localStorage
-        const saved = localStorage.getItem('menuOrders');
-        if (saved) {
-            allOrders = JSON.parse(saved);
+        if (!USE_FIREBASE) {
+            // Fallback to localStorage only for IndexedDB mode
+            const saved = localStorage.getItem('menuOrders');
+            if (saved) {
+                allOrders = JSON.parse(saved);
+            } else {
+                allOrders = [];
+            }
         } else {
             allOrders = [];
         }
