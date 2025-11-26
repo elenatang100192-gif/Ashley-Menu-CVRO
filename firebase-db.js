@@ -127,14 +127,12 @@ function initFirestore() {
         // 注意：在 Firebase 10.7.1+ 中，使用 settings() 配置缓存会自动启用持久化
         // 不需要手动调用 enablePersistence() 或 enableMultiTabIndexedDbPersistence()
         try {
-            // 检查 CACHE_SIZE_UNLIMITED 常量是否存在
-            const cacheSize = firebase.firestore.CACHE_SIZE_UNLIMITED || 40 * 1024 * 1024; // 40MB 默认值
-            // 只在第一次调用时设置，避免覆盖已有设置
-            // 注意：Firebase 10.7.1+ 支持 merge 选项，但语法可能因版本而异
-            // 如果出现警告，可以忽略（不影响功能）
+            // 只在第一次调用时设置
             if (!firestoreDB) {
+                // 只设置改善连接的选项，避免覆盖默认主机设置
+                // 注意：不设置 cacheSizeBytes，使用默认值以避免覆盖警告
                 db.settings({
-                    cacheSizeBytes: cacheSize
+                    experimentalAutoDetectLongPolling: true // 改善网络连接稳定性，特别是在受限网络环境中
                 });
             }
             console.log('✅ Firestore cache configured');

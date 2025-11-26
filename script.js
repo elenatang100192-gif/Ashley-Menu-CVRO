@@ -1625,25 +1625,38 @@ function toggleMenuItem(item) {
 // Render selected items
 function renderSelectedItems() {
     const container = document.getElementById('selectedList');
+    const confirmBtn = document.getElementById('confirmBtn');
     
-    if (selectedItems.length === 0) {
-        container.innerHTML = '<div class="empty-message">No items selected</div>';
-        document.getElementById('confirmBtn').disabled = true;
+    if (!container || !confirmBtn) {
+        console.error('Container or confirm button not found');
         return;
     }
     
-    document.getElementById('confirmBtn').disabled = false;
+    if (selectedItems.length === 0) {
+        container.innerHTML = '<div class="empty-message">No items selected</div>';
+        confirmBtn.disabled = true;
+        return;
+    }
+    
+    // 确保按钮始终启用（无论选中多少项）
+    confirmBtn.disabled = false;
     container.innerHTML = '';
     
-    selectedItems.forEach(item => {
-        const selectedItem = document.createElement('div');
-        selectedItem.className = 'selected-item';
-        selectedItem.innerHTML = `
-            <span class="selected-item-name">${item.name}${item.price ? ' - ' + item.price : ''}</span>
-            <button class="remove-btn" onclick="removeSelectedItem(${item.id})">Remove</button>
-        `;
-        container.appendChild(selectedItem);
-    });
+    try {
+        selectedItems.forEach(item => {
+            const selectedItem = document.createElement('div');
+            selectedItem.className = 'selected-item';
+            selectedItem.innerHTML = `
+                <span class="selected-item-name">${item.name || 'Unknown'}${item.price ? ' - ' + item.price : ''}</span>
+                <button class="remove-btn" onclick="removeSelectedItem(${item.id})">Remove</button>
+            `;
+            container.appendChild(selectedItem);
+        });
+    } catch (error) {
+        console.error('Error rendering selected items:', error);
+        // 即使渲染出错，也要确保按钮可用
+        confirmBtn.disabled = false;
+    }
 }
 
 // Remove selected item
@@ -1866,9 +1879,16 @@ async function downloadOrders() {
         return;
     }
     
-    // Prepare CSV data with detailed information - one item per row
-    const csvHeaders = ['Date', 'Customer Name', 'Item Name', 'Item Price', 'Restaurant'];
-    const csvRows = allOrders.flatMap(order => {
+    // Helper function to escape HTML
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+    
+    // Prepare data with detailed information - one item per row
+    const headers = ['Date', 'Customer Name', 'Item Name', 'Item Price', 'Restaurant'];
+    const rows = allOrders.flatMap(order => {
         return order.items.map(item => {
             return [
                 order.date,
@@ -1880,21 +1900,43 @@ async function downloadOrders() {
         });
     });
     
-    // Convert to CSV format
-    const csvContent = [
-        csvHeaders.join(','),
-        ...csvRows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-    ].join('\n');
+    // Convert to HTML table format for Excel (.xls)
+    let htmlContent = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+    htmlContent += '<head>';
+    htmlContent += '<meta charset="UTF-8">';
+    htmlContent += '<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>Orders</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->';
+    htmlContent += '</head>';
+    htmlContent += '<body>';
+    htmlContent += '<table border="1">';
     
-    // Add BOM for UTF-8 support
-    const BOM = '\uFEFF';
-    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    // Add header row
+    htmlContent += '<tr>';
+    headers.forEach(header => {
+        htmlContent += `<th style="background-color: #4CAF50; color: white; font-weight: bold; padding: 8px;">${escapeHtml(header)}</th>`;
+    });
+    htmlContent += '</tr>';
+    
+    // Add data rows
+    rows.forEach(row => {
+        htmlContent += '<tr>';
+        row.forEach(cell => {
+            htmlContent += `<td style="padding: 5px;">${escapeHtml(String(cell))}</td>`;
+        });
+        htmlContent += '</tr>';
+    });
+    
+    htmlContent += '</table>';
+    htmlContent += '</body>';
+    htmlContent += '</html>';
+    
+    // Create blob with Excel MIME type
+    const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel;charset=utf-8;' });
     
     // Create download link
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `orders_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `orders_${new Date().toISOString().split('T')[0]}.xls`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
