@@ -337,6 +337,7 @@ async function loadMenuItemsFromFirestore() {
 // 写入锁，防止并发写入
 let isWritingOrders = false;
 let writeQueue = [];
+let singleOrderWriteLock = false; // 单订单写入锁
 
 // 保存单个订单到 Firestore（优化版本，避免批量写入）
 async function saveSingleOrderToFirestore(order) {
@@ -344,48 +345,76 @@ async function saveSingleOrderToFirestore(order) {
         throw new Error('Firestore not initialized');
     }
     
-    return withRetry(async () => {
-        const docRef = firestoreDB.collection(COLLECTION_ORDERS).doc(String(order.id));
-        await docRef.set({
-            id: order.id,
-            name: order.name || '',
-            order: order.order || '',
-            items: order.items || [],
-            date: order.date || new Date().toLocaleString('en-US'),
-            createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        }, { merge: true });
-        
-        console.log('✅ Single order saved to Firestore:', order.id);
-        return true;
-    }, 3, 1000).catch(error => {
+    // 使用写入锁防止并发写入
+    if (singleOrderWriteLock) {
+        console.warn('⚠️ Single order write in progress, queuing request...');
+        return new Promise((resolve, reject) => {
+            writeQueue.push({ order, resolve, reject, isSingle: true });
+        });
+    }
+    
+    singleOrderWriteLock = true;
+    
+    try {
+        return await withRetry(async () => {
+            const docRef = firestoreDB.collection(COLLECTION_ORDERS).doc(String(order.id));
+            await docRef.set({
+                id: order.id,
+                name: order.name || '',
+                order: order.order || '',
+                items: order.items || [],
+                date: order.date || new Date().toLocaleString('en-US'),
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+            
+            console.log('✅ Single order saved to Firestore:', order.id);
+            return true;
+        }, 3, 1000);
+    } catch (error) {
         console.error('Failed to save single order to Firestore:', error);
         // 特殊处理 resource-exhausted 错误
         if (error.code === 'resource-exhausted') {
             console.warn('⚠️ Write queue exhausted, will retry with delay');
-            // 延迟重试
-            return new Promise((resolve, reject) => {
-                setTimeout(async () => {
-                    try {
-                        await withRetry(async () => {
-                            const docRef = firestoreDB.collection(COLLECTION_ORDERS).doc(String(order.id));
-                            await docRef.set({
-                                id: order.id,
-                                name: order.name || '',
-                                order: order.order || '',
-                                items: order.items || [],
-                                date: order.date || new Date().toLocaleString('en-US'),
-                                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-                            }, { merge: true });
-                        }, 2, 2000);
-                        resolve(true);
-                    } catch (retryError) {
-                        reject(retryError);
-                    }
-                }, 3000); // 等待 3 秒后重试
-            });
+            // 延迟重试，等待队列清空
+            await new Promise(resolve => setTimeout(resolve, 5000)); // 等待 5 秒让队列清空
+            
+            try {
+                // 再次尝试保存
+                await withRetry(async () => {
+                    const docRef = firestoreDB.collection(COLLECTION_ORDERS).doc(String(order.id));
+                    await docRef.set({
+                        id: order.id,
+                        name: order.name || '',
+                        order: order.order || '',
+                        items: order.items || [],
+                        date: order.date || new Date().toLocaleString('en-US'),
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+                }, 2, 2000);
+                console.log('✅ Single order saved to Firestore after retry:', order.id);
+                return true;
+            } catch (retryError) {
+                console.error('Failed to save after retry:', retryError);
+                throw retryError;
+            }
         }
         throw error;
-    });
+    } finally {
+        singleOrderWriteLock = false;
+        
+        // 处理队列中的下一个请求
+        const singleOrderRequests = writeQueue.filter(item => item.isSingle);
+        if (singleOrderRequests.length > 0) {
+            const next = singleOrderRequests[0];
+            const index = writeQueue.indexOf(next);
+            if (index > -1) {
+                writeQueue.splice(index, 1);
+            }
+            saveSingleOrderToFirestore(next.order)
+                .then(next.resolve)
+                .catch(next.reject);
+        }
+    }
 }
 
 // 保存订单到 Firestore（优化版本，分批处理大量订单）

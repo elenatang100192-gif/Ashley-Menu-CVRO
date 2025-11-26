@@ -1666,8 +1666,16 @@ function removeSelectedItem(itemId) {
     renderSelectedItems();
 }
 
-// Confirm order
+// Confirm order (with debounce to prevent double clicks)
+let isConfirming = false;
+
 async function confirmOrder() {
+    // 防抖：如果正在处理，直接返回
+    if (isConfirming) {
+        console.log('⚠️ Order confirmation already in progress, ignoring duplicate click');
+        return;
+    }
+    
     const customerName = document.getElementById('customerName').value.trim();
     
     if (!customerName) {
@@ -1679,6 +1687,8 @@ async function confirmOrder() {
         alert('Please select at least one item');
         return;
     }
+    
+    isConfirming = true;
     
     // Disable confirm button to prevent double submission
     const confirmBtn = document.getElementById('confirmBtn');
@@ -1709,47 +1719,59 @@ async function confirmOrder() {
     allOrders.push(order);
     
     // Save to storage (optimized: only save new order if using Firebase)
+    let saveSuccess = false;
     try {
         if (USE_FIREBASE && typeof saveSingleOrderToFirestore === 'function') {
             // 只保存新订单，而不是整个订单列表
             await saveSingleOrderToFirestore(order);
             console.log('✅ Order saved successfully to Firestore');
+            saveSuccess = true;
         } else {
             // 使用原有的保存方法（IndexedDB 或批量保存）
             await saveOrdersToStorage();
             console.log('✅ Order saved successfully');
+            saveSuccess = true;
         }
         
         // Show success message
         if (confirmBtn) {
             confirmBtn.textContent = '✓ Saved!';
             confirmBtn.style.backgroundColor = '#4caf50';
-            setTimeout(() => {
-                confirmBtn.textContent = 'Confirm';
-                confirmBtn.style.backgroundColor = '';
-            }, 2000);
         }
     } catch (e) {
         console.error('Failed to save order:', e);
         
-        // Re-enable button on error
-        if (confirmBtn) {
-            confirmBtn.disabled = false;
-            confirmBtn.textContent = 'Confirm';
-        }
-        
-        // Show user-friendly error message
-        let errorMessage = 'Order save failed, please try again';
+        // 对于 resource-exhausted 错误，订单已经添加到本地列表，可以继续流程
+        // 但需要告知用户可能会延迟保存
         if (e.code === 'resource-exhausted') {
-            errorMessage = 'Server is busy, your order will be saved automatically. Please wait a moment.';
-        } else if (e.message) {
-            errorMessage = 'Order save failed: ' + e.message;
+            console.warn('⚠️ Resource exhausted, order added to local list, will retry in background');
+            // 订单已经添加到 allOrders，即使保存失败也继续流程
+            saveSuccess = true;
+            
+            // 在后台重试保存
+            setTimeout(async () => {
+                try {
+                    if (USE_FIREBASE && typeof saveSingleOrderToFirestore === 'function') {
+                        await saveSingleOrderToFirestore(order);
+                        console.log('✅ Order saved successfully after retry');
+                    }
+                } catch (retryError) {
+                    console.error('Failed to save order in background retry:', retryError);
+                }
+            }, 5000);
+        } else {
+            // 其他错误，显示错误消息但不阻止流程
+            let errorMessage = 'Order save failed, but order has been recorded locally';
+            if (e.message) {
+                errorMessage += ': ' + e.message;
+            }
+            console.warn(errorMessage);
+            // 即使保存失败，订单也已经添加到本地列表，继续流程
+            saveSuccess = true;
         }
-        
-        alert(errorMessage);
-        return;
     }
     
+    // 无论保存是否成功，都继续流程（因为订单已经添加到本地列表）
     // Clear current selection
     selectedItems = [];
     document.getElementById('customerName').value = '';
@@ -1761,7 +1783,12 @@ async function confirmOrder() {
     // Re-enable button
     if (confirmBtn) {
         confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Confirm';
+        confirmBtn.style.backgroundColor = '';
     }
+    
+    // Reset confirming flag
+    isConfirming = false;
     
     // Show summary page
     showSummaryPage();
