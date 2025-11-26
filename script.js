@@ -1680,6 +1680,13 @@ async function confirmOrder() {
         return;
     }
     
+    // Disable confirm button to prevent double submission
+    const confirmBtn = document.getElementById('confirmBtn');
+    if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Saving...';
+    }
+    
     // Create order with complete item information
     const order = {
         id: Date.now(),
@@ -1701,13 +1708,45 @@ async function confirmOrder() {
     // Add to orders list
     allOrders.push(order);
     
-    // Save to IndexedDB (permanent storage)
+    // Save to storage (optimized: only save new order if using Firebase)
     try {
-        await saveOrdersToStorage();
-        console.log('Order saved successfully'); // Debug log
+        if (USE_FIREBASE && typeof saveSingleOrderToFirestore === 'function') {
+            // 只保存新订单，而不是整个订单列表
+            await saveSingleOrderToFirestore(order);
+            console.log('✅ Order saved successfully to Firestore');
+        } else {
+            // 使用原有的保存方法（IndexedDB 或批量保存）
+            await saveOrdersToStorage();
+            console.log('✅ Order saved successfully');
+        }
+        
+        // Show success message
+        if (confirmBtn) {
+            confirmBtn.textContent = '✓ Saved!';
+            confirmBtn.style.backgroundColor = '#4caf50';
+            setTimeout(() => {
+                confirmBtn.textContent = 'Confirm';
+                confirmBtn.style.backgroundColor = '';
+            }, 2000);
+        }
     } catch (e) {
         console.error('Failed to save order:', e);
-        alert('Order save failed, please try again');
+        
+        // Re-enable button on error
+        if (confirmBtn) {
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Confirm';
+        }
+        
+        // Show user-friendly error message
+        let errorMessage = 'Order save failed, please try again';
+        if (e.code === 'resource-exhausted') {
+            errorMessage = 'Server is busy, your order will be saved automatically. Please wait a moment.';
+        } else if (e.message) {
+            errorMessage = 'Order save failed: ' + e.message;
+        }
+        
+        alert(errorMessage);
         return;
     }
     
@@ -1718,6 +1757,11 @@ async function confirmOrder() {
     // Re-render
     renderMenu();
     renderSelectedItems();
+    
+    // Re-enable button
+    if (confirmBtn) {
+        confirmBtn.disabled = false;
+    }
     
     // Show summary page
     showSummaryPage();

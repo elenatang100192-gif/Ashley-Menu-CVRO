@@ -334,49 +334,206 @@ async function loadMenuItemsFromFirestore() {
     });
 }
 
-// 保存订单到 Firestore
-async function saveOrdersToFirestore(orders) {
+// 写入锁，防止并发写入
+let isWritingOrders = false;
+let writeQueue = [];
+
+// 保存单个订单到 Firestore（优化版本，避免批量写入）
+async function saveSingleOrderToFirestore(order) {
     if (!firestoreDB) {
         throw new Error('Firestore not initialized');
     }
     
     return withRetry(async () => {
-        const batch = firestoreDB.batch();
+        const docRef = firestoreDB.collection(COLLECTION_ORDERS).doc(String(order.id));
+        await docRef.set({
+            id: order.id,
+            name: order.name || '',
+            order: order.order || '',
+            items: order.items || [],
+            date: order.date || new Date().toLocaleString('en-US'),
+            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
         
-        // 获取所有现有订单
-        const snapshot = await firestoreDB.collection(COLLECTION_ORDERS).get();
-        
-        // 创建现有订单ID的集合
-        const existingIds = new Set(snapshot.docs.map(doc => doc.id));
-        const newIds = new Set(orders.map(order => String(order.id)));
-        
-        // 删除不再存在的订单
-        snapshot.docs.forEach(doc => {
-            if (!newIds.has(doc.id)) {
-                batch.delete(doc.ref);
-            }
-        });
-        
-        // 添加或更新所有订单
-        orders.forEach(order => {
-            const docRef = firestoreDB.collection(COLLECTION_ORDERS).doc(String(order.id));
-            batch.set(docRef, {
-                id: order.id,
-                name: order.name || '',
-                order: order.order || '',
-                items: order.items || [],
-                date: order.date || new Date().toLocaleString('en-US'),
-                createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-        });
-        
-        await batch.commit();
-        console.log('Orders saved to Firestore:', orders.length, 'orders');
+        console.log('✅ Single order saved to Firestore:', order.id);
         return true;
     }, 3, 1000).catch(error => {
-        console.error('Failed to save orders to Firestore:', error);
+        console.error('Failed to save single order to Firestore:', error);
+        // 特殊处理 resource-exhausted 错误
+        if (error.code === 'resource-exhausted') {
+            console.warn('⚠️ Write queue exhausted, will retry with delay');
+            // 延迟重试
+            return new Promise((resolve, reject) => {
+                setTimeout(async () => {
+                    try {
+                        await withRetry(async () => {
+                            const docRef = firestoreDB.collection(COLLECTION_ORDERS).doc(String(order.id));
+                            await docRef.set({
+                                id: order.id,
+                                name: order.name || '',
+                                order: order.order || '',
+                                items: order.items || [],
+                                date: order.date || new Date().toLocaleString('en-US'),
+                                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                            }, { merge: true });
+                        }, 2, 2000);
+                        resolve(true);
+                    } catch (retryError) {
+                        reject(retryError);
+                    }
+                }, 3000); // 等待 3 秒后重试
+            });
+        }
         throw error;
     });
+}
+
+// 保存订单到 Firestore（优化版本，分批处理大量订单）
+async function saveOrdersToFirestore(orders) {
+    if (!firestoreDB) {
+        throw new Error('Firestore not initialized');
+    }
+    
+    // 如果只有一个订单，使用单订单保存函数
+    if (orders.length === 1) {
+        return await saveSingleOrderToFirestore(orders[0]);
+    }
+    
+    // 使用写入锁防止并发写入
+    if (isWritingOrders) {
+        console.warn('⚠️ Write operation in progress, queuing request...');
+        return new Promise((resolve, reject) => {
+            writeQueue.push({ orders, resolve, reject });
+        });
+    }
+    
+    isWritingOrders = true;
+    
+    try {
+        return await withRetry(async () => {
+            // 分批处理，每批最多 400 个操作（留出余量，因为 Firestore 限制是 500）
+            const BATCH_SIZE = 400;
+            const batches = [];
+            
+            // 获取所有现有订单（只获取一次）
+            const snapshot = await firestoreDB.collection(COLLECTION_ORDERS).get();
+            const existingIds = new Set(snapshot.docs.map(doc => doc.id));
+            const newIds = new Set(orders.map(order => String(order.id)));
+            
+            // 准备所有操作
+            const operations = [];
+            
+            // 删除不再存在的订单
+            snapshot.docs.forEach(doc => {
+                if (!newIds.has(doc.id)) {
+                    operations.push({ type: 'delete', ref: doc.ref });
+                }
+            });
+            
+            // 添加或更新订单（只更新需要更新的）
+            orders.forEach(order => {
+                const orderId = String(order.id);
+                const existingDoc = snapshot.docs.find(doc => doc.id === orderId);
+                
+                // 只添加新订单或需要更新的订单
+                if (!existingDoc || existingDoc.data().date !== order.date) {
+                    operations.push({
+                        type: 'set',
+                        ref: firestoreDB.collection(COLLECTION_ORDERS).doc(orderId),
+                        data: {
+                            id: order.id,
+                            name: order.name || '',
+                            order: order.order || '',
+                            items: order.items || [],
+                            date: order.date || new Date().toLocaleString('en-US'),
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        }
+                    });
+                }
+            });
+            
+            // 如果没有操作，直接返回
+            if (operations.length === 0) {
+                console.log('✅ No orders to save (all up to date)');
+                return true;
+            }
+            
+            // 分批执行操作
+            for (let i = 0; i < operations.length; i += BATCH_SIZE) {
+                const batch = firestoreDB.batch();
+                const batchOps = operations.slice(i, i + BATCH_SIZE);
+                
+                batchOps.forEach(op => {
+                    if (op.type === 'delete') {
+                        batch.delete(op.ref);
+                    } else if (op.type === 'set') {
+                        batch.set(op.ref, op.data, { merge: true });
+                    }
+                });
+                
+                await batch.commit();
+                console.log(`✅ Batch saved: ${batchOps.length} operations (${i + 1}-${Math.min(i + BATCH_SIZE, operations.length)}/${operations.length})`);
+                
+                // 在批次之间添加小延迟，避免队列过载
+                if (i + BATCH_SIZE < operations.length) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+            }
+            
+            console.log('✅ All orders saved to Firestore:', orders.length, 'orders,', operations.length, 'operations');
+            return true;
+        }, 3, 1000).catch(error => {
+            console.error('Failed to save orders to Firestore:', error);
+            
+            // 特殊处理 resource-exhausted 错误
+            if (error.code === 'resource-exhausted') {
+                console.warn('⚠️ Write queue exhausted, trying alternative approach...');
+                // 如果批量写入失败，尝试逐个保存（更慢但更可靠）
+                return saveOrdersOneByOne(orders);
+            }
+            
+            throw error;
+        });
+    } finally {
+        isWritingOrders = false;
+        
+        // 处理队列中的下一个请求
+        if (writeQueue.length > 0) {
+            const next = writeQueue.shift();
+            saveOrdersToFirestore(next.orders)
+                .then(next.resolve)
+                .catch(next.reject);
+        }
+    }
+}
+
+// 逐个保存订单（备用方法，当批量写入失败时使用）
+async function saveOrdersOneByOne(orders) {
+    console.log('📝 Saving orders one by one (fallback method)...');
+    let successCount = 0;
+    let failCount = 0;
+    
+    for (const order of orders) {
+        try {
+            await saveSingleOrderToFirestore(order);
+            successCount++;
+            // 在每次保存之间添加延迟，避免队列过载
+            await new Promise(resolve => setTimeout(resolve, 200));
+        } catch (error) {
+            console.error(`Failed to save order ${order.id}:`, error);
+            failCount++;
+            // 如果是 resource-exhausted，等待更长时间
+            if (error.code === 'resource-exhausted') {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+        }
+    }
+    
+    console.log(`✅ Saved ${successCount} orders, ${failCount} failed`);
+    if (failCount > 0) {
+        throw new Error(`Failed to save ${failCount} orders`);
+    }
+    return true;
 }
 
 // 从 Firestore 加载订单
