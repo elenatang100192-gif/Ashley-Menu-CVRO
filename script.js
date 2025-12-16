@@ -22,7 +22,7 @@ window.addEventListener('unhandledrejection', function(event) {
     return false;
 });
 
-// Menu items data structure: { id, name, category, subtitle, description, price, image }
+// Menu items data structure: { id, name, category, subtitle, description, price, image, tag }
 let menuItems = [];
 
 // Currently selected items
@@ -31,6 +31,42 @@ let selectedItems = [];
 let allOrders = [];
 // Currently editing item ID (null if not editing)
 let editingItemId = null;
+
+// Hidden restaurants (by restaurant name/tag), stored in localStorage
+let hiddenRestaurants = [];
+const HIDDEN_RESTAURANTS_KEY = 'hiddenRestaurants';
+
+function loadHiddenRestaurants() {
+    try {
+        const stored = localStorage.getItem(HIDDEN_RESTAURANTS_KEY);
+        if (!stored) {
+            hiddenRestaurants = [];
+            return;
+        }
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed)) {
+            hiddenRestaurants = parsed.filter(name => typeof name === 'string' && name.trim());
+        } else {
+            hiddenRestaurants = [];
+        }
+    } catch (e) {
+        console.error('Failed to load hidden restaurants from localStorage:', e);
+        hiddenRestaurants = [];
+    }
+}
+
+function saveHiddenRestaurants() {
+    try {
+        localStorage.setItem(HIDDEN_RESTAURANTS_KEY, JSON.stringify(hiddenRestaurants));
+    } catch (e) {
+        console.error('Failed to save hidden restaurants to localStorage:', e);
+    }
+}
+
+function isRestaurantHidden(restaurantName) {
+    if (!restaurantName) return false;
+    return hiddenRestaurants.includes(restaurantName);
+}
 
 // 数据库配置：设置为 true 使用 Firebase，false 使用 IndexedDB（本地存储）
 const USE_FIREBASE = true; // 改为 true 启用 Firebase 数据共享
@@ -250,12 +286,13 @@ document.addEventListener('DOMContentLoaded', async function() {
                         // 更新数据
                         menuItems = items;
                         
-                        // 刷新显示
-                        console.log('🔄 Rendering menu with', items.length, 'items from real-time sync');
-                        renderMenu();
-                        renderItemsList();
-                        // Update restaurant filter when menu items change
-                        updateRestaurantFilter();
+                // 刷新显示
+                console.log('🔄 Rendering menu with', items.length, 'items from real-time sync');
+                renderMenu();
+                renderItemsList();
+                renderRestaurantVisibilityControls();
+                // Update restaurant filter when menu items change
+                updateRestaurantFilter();
                     });
                     
                     unsubscribeOrders = subscribeToOrders((orders) => {
@@ -349,11 +386,15 @@ document.addEventListener('DOMContentLoaded', async function() {
             console.log('✅ IndexedDB 数据加载完成');
         }
         
+        // 加载餐厅隐藏配置
+        loadHiddenRestaurants();
+        
         // 统一渲染界面（无论使用 Firebase 还是 IndexedDB）
         console.log('开始渲染菜单界面...');
         renderMenu();
         renderSelectedItems();
         renderItemsList();
+        renderRestaurantVisibilityControls();
         // Update restaurant filter options after initial render
         updateRestaurantFilter();
         console.log('✅ 页面初始化完成');
@@ -1464,14 +1505,85 @@ function renderItemsList() {
     });
 }
 
+// Render restaurant visibility controls in management page
+function renderRestaurantVisibilityControls() {
+    const section = document.getElementById('restaurantVisibilitySection');
+    if (!section) return;
+    
+    // Collect unique restaurant names from menu items
+    const restaurants = [...new Set(
+        menuItems
+            .map(item => item.tag)
+            .filter(tag => tag && typeof tag === 'string' && tag.trim())
+    )].sort();
+    
+    if (restaurants.length === 0) {
+        section.innerHTML = '<h2>Restaurant Visibility</h2>' +
+            '<p class="restaurant-visibility-tip">Add menu items with a restaurant name to manage their visibility.</p>' +
+            '<div class="empty-message">No restaurants yet.</div>';
+        return;
+    }
+    
+    const htmlParts = [];
+    htmlParts.push('<h2>Restaurant Visibility</h2>');
+    htmlParts.push('<p class="restaurant-visibility-tip">Uncheck a restaurant to hide it and all its dishes from the customer menu and the restaurant filter.</p>');
+    htmlParts.push('<div class="restaurant-toggle-list">');
+    
+    restaurants.forEach(name => {
+        const isHidden = isRestaurantHidden(name);
+        const encodedName = encodeURIComponent(name);
+        htmlParts.push(`
+            <label class="restaurant-toggle-item">
+                <input type="checkbox" data-restaurant="${encodedName}" ${isHidden ? '' : 'checked'}>
+                <span class="restaurant-toggle-name">${name}</span>
+                ${isHidden ? '<span class="restaurant-visibility-badge">Hidden</span>' : ''}
+            </label>
+        `);
+    });
+    
+    htmlParts.push('</div>');
+    section.innerHTML = htmlParts.join('');
+    
+    // Bind change handlers
+    const inputs = section.querySelectorAll('input[type="checkbox"][data-restaurant]');
+    inputs.forEach(input => {
+        input.addEventListener('change', (e) => {
+            const encoded = e.target.getAttribute('data-restaurant');
+            const name = decodeURIComponent(encoded || '');
+            if (!name) return;
+            
+            const currentlyHidden = isRestaurantHidden(name);
+            const shouldBeVisible = e.target.checked;
+            
+            if (shouldBeVisible && currentlyHidden) {
+                hiddenRestaurants = hiddenRestaurants.filter(r => r !== name);
+            } else if (!shouldBeVisible && !currentlyHidden) {
+                hiddenRestaurants.push(name);
+            }
+            
+            saveHiddenRestaurants();
+            // Re-render menu and filter based on updated visibility
+            renderMenu();
+            updateRestaurantFilter();
+            // Re-render this section to update badges
+            renderRestaurantVisibilityControls();
+        });
+    });
+}
+
 // Render menu
 // Update restaurant filter dropdown options
 function updateRestaurantFilter() {
     const restaurantFilter = document.getElementById('restaurantFilter');
     if (!restaurantFilter) return;
     
-    // Get unique restaurants from menu items
-    const restaurants = [...new Set(menuItems.map(item => item.tag).filter(tag => tag && tag.trim()))].sort();
+    // Get unique restaurants from menu items, excluding hidden ones
+    const restaurants = [...new Set(
+        menuItems
+            .filter(item => item.tag && !isRestaurantHidden(item.tag))
+            .map(item => item.tag)
+            .filter(tag => tag && tag.trim())
+    )].sort();
     
     // Save current selection
     const currentValue = restaurantFilter.value;
@@ -1505,8 +1617,8 @@ function renderMenu() {
     // Update restaurant filter options
     updateRestaurantFilter();
     
-    // Restore filter selection
-    if (restaurantFilter && selectedRestaurant) {
+    // Restore filter selection if still visible
+    if (restaurantFilter && selectedRestaurant && !isRestaurantHidden(selectedRestaurant)) {
         restaurantFilter.value = selectedRestaurant;
     }
     
@@ -1530,10 +1642,12 @@ function renderMenu() {
         return;
     }
     
+    // Filter out items from hidden restaurants
+    let filteredItems = menuItems.filter(item => !isRestaurantHidden(item.tag));
+    
     // Filter items by restaurant if filter is selected
-    let filteredItems = menuItems;
     if (selectedRestaurant) {
-        filteredItems = menuItems.filter(item => item.tag === selectedRestaurant);
+        filteredItems = filteredItems.filter(item => item.tag === selectedRestaurant);
     }
     
     // Group items by category

@@ -660,6 +660,70 @@ h2 {
     gap: 20px;
 }
 
+/* Restaurant visibility management */
+.restaurant-visibility-section {
+    margin-top: 32px;
+    background: #FFFFFF;
+    border: 1px solid #E7E7E7;
+    border-radius: 8px;
+    padding: 24px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.restaurant-visibility-section h2 {
+    margin-bottom: 12px;
+}
+
+.restaurant-visibility-tip {
+    font-size: 0.875rem;
+    color: #565959;
+    margin-bottom: 12px;
+}
+
+.restaurant-toggle-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 260px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+.restaurant-toggle-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    font-size: 0.9rem;
+}
+
+.restaurant-toggle-item:hover {
+    background: #F8F9FA;
+}
+
+.restaurant-toggle-item input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+}
+
+.restaurant-toggle-name {
+    flex: 1;
+    color: #232F3E;
+}
+
+.restaurant-visibility-badge {
+    font-size: 0.75rem;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: #FFF4F4;
+    color: #B12704;
+    border: 1px solid #FFD6D6;
+}
+
 .item-card {
     background: #FFFFFF;
     border: 1px solid #E7E7E7;
