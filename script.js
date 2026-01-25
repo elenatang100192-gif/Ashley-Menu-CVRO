@@ -36,30 +36,72 @@ let editingItemId = null;
 let hiddenRestaurants = [];
 const HIDDEN_RESTAURANTS_KEY = 'hiddenRestaurants';
 
-function loadHiddenRestaurants() {
-    try {
-        const stored = localStorage.getItem(HIDDEN_RESTAURANTS_KEY);
-        if (!stored) {
-            hiddenRestaurants = [];
-            return;
+async function loadHiddenRestaurants() {
+    if (USE_FIREBASE) {
+        try {
+            // 从 Firebase 加载
+            const restaurants = await loadHiddenRestaurantsFromFirestore();
+            hiddenRestaurants = restaurants;
+            console.log('✅ Hidden restaurants loaded from Firebase:', hiddenRestaurants.length);
+        } catch (e) {
+            console.error('Failed to load hidden restaurants from Firebase:', e);
+            // 如果 Firebase 加载失败，尝试从 localStorage 加载作为后备
+            try {
+                const stored = localStorage.getItem(HIDDEN_RESTAURANTS_KEY);
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    if (Array.isArray(parsed)) {
+                        hiddenRestaurants = parsed.filter(name => typeof name === 'string' && name.trim());
+                    }
+                }
+            } catch (localError) {
+                console.error('Failed to load from localStorage fallback:', localError);
+                hiddenRestaurants = [];
+            }
         }
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed)) {
-            hiddenRestaurants = parsed.filter(name => typeof name === 'string' && name.trim());
-        } else {
+    } else {
+        // 使用 localStorage
+        try {
+            const stored = localStorage.getItem(HIDDEN_RESTAURANTS_KEY);
+            if (!stored) {
+                hiddenRestaurants = [];
+                return;
+            }
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed)) {
+                hiddenRestaurants = parsed.filter(name => typeof name === 'string' && name.trim());
+            } else {
+                hiddenRestaurants = [];
+            }
+        } catch (e) {
+            console.error('Failed to load hidden restaurants from localStorage:', e);
             hiddenRestaurants = [];
         }
-    } catch (e) {
-        console.error('Failed to load hidden restaurants from localStorage:', e);
-        hiddenRestaurants = [];
     }
 }
 
-function saveHiddenRestaurants() {
-    try {
-        localStorage.setItem(HIDDEN_RESTAURANTS_KEY, JSON.stringify(hiddenRestaurants));
-    } catch (e) {
-        console.error('Failed to save hidden restaurants to localStorage:', e);
+async function saveHiddenRestaurants() {
+    if (USE_FIREBASE) {
+        try {
+            // 保存到 Firebase
+            await saveHiddenRestaurantsToFirestore(hiddenRestaurants);
+            console.log('✅ Hidden restaurants saved to Firebase');
+        } catch (e) {
+            console.error('Failed to save hidden restaurants to Firebase:', e);
+            // 如果 Firebase 保存失败，也保存到 localStorage 作为后备
+            try {
+                localStorage.setItem(HIDDEN_RESTAURANTS_KEY, JSON.stringify(hiddenRestaurants));
+            } catch (localError) {
+                console.error('Failed to save to localStorage fallback:', localError);
+            }
+        }
+    } else {
+        // 使用 localStorage
+        try {
+            localStorage.setItem(HIDDEN_RESTAURANTS_KEY, JSON.stringify(hiddenRestaurants));
+        } catch (e) {
+            console.error('Failed to save hidden restaurants to localStorage:', e);
+        }
     }
 }
 
@@ -81,6 +123,7 @@ const STORE_ORDERS = 'orders';
 // Firebase 订阅取消函数
 let unsubscribeMenuItems = null;
 let unsubscribeOrders = null;
+let unsubscribeHiddenRestaurants = null;
 
 // Initialize IndexedDB
 function initDB() {
@@ -304,11 +347,31 @@ document.addEventListener('DOMContentLoaded', async function() {
                         }
                     });
                     
+                    // 设置隐藏餐厅的实时监听
+                    unsubscribeHiddenRestaurants = subscribeToHiddenRestaurants((restaurants) => {
+                        console.log('🔄 Hidden restaurants updated via real-time sync:', restaurants.length, 'restaurants');
+                        hiddenRestaurants = restaurants;
+                        // 刷新显示
+                        renderMenu();
+                        renderRestaurantVisibilityControls();
+                        updateRestaurantFilter();
+                    });
+                    
                     console.log('✅ Firebase real-time sync listeners set up successfully');
                     console.log('💡 Note: Real-time listeners will automatically update when data changes on any device');
                 } catch (subscribeError) {
                     console.error('❌ Failed to set up real-time subscriptions:', subscribeError);
                     console.warn('⚠️ Continuing without real-time sync - data will only sync on page refresh');
+                }
+                
+                // 加载隐藏餐厅配置（Firebase 模式下）
+                try {
+                    await loadHiddenRestaurants();
+                    console.log('✅ Hidden restaurants loaded from Firebase');
+                } catch (hiddenError) {
+                    console.error('Failed to load hidden restaurants:', hiddenError);
+                    // 继续执行，使用空数组
+                    hiddenRestaurants = [];
                 }
                 
                 console.log('✅ Firebase 数据加载完成');
@@ -386,8 +449,8 @@ document.addEventListener('DOMContentLoaded', async function() {
             console.log('✅ IndexedDB 数据加载完成');
         }
         
-        // 加载餐厅隐藏配置
-        loadHiddenRestaurants();
+        // 加载餐厅隐藏配置（异步）
+        await loadHiddenRestaurants();
         
         // 统一渲染界面（无论使用 Firebase 还是 IndexedDB）
         console.log('开始渲染菜单界面...');
@@ -1547,7 +1610,7 @@ function renderRestaurantVisibilityControls() {
     // Bind change handlers
     const inputs = section.querySelectorAll('input[type="checkbox"][data-restaurant]');
     inputs.forEach(input => {
-        input.addEventListener('change', (e) => {
+        input.addEventListener('change', async (e) => {
             const encoded = e.target.getAttribute('data-restaurant');
             const name = decodeURIComponent(encoded || '');
             if (!name) return;
@@ -1561,7 +1624,7 @@ function renderRestaurantVisibilityControls() {
                 hiddenRestaurants.push(name);
             }
             
-            saveHiddenRestaurants();
+            await saveHiddenRestaurants();
             // Re-render menu and filter based on updated visibility
             renderMenu();
             updateRestaurantFilter();

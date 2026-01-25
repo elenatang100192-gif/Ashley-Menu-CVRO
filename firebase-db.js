@@ -3,6 +3,8 @@
 
 const COLLECTION_MENU = 'menuItems';
 const COLLECTION_ORDERS = 'orders';
+const COLLECTION_SETTINGS = 'settings';
+const DOC_HIDDEN_RESTAURANTS = 'hiddenRestaurants';
 
 // 初始化 Firestore
 let firestoreDB = null;
@@ -951,5 +953,94 @@ function subscribeToOrders(callback) {
             fallbackUnsubscribe();
         }
     };
+}
+
+// 保存隐藏餐厅列表到 Firestore
+async function saveHiddenRestaurantsToFirestore(restaurantNames) {
+    if (!firestoreDB) {
+        throw new Error('Firestore not initialized');
+    }
+    
+    return withRetry(async () => {
+        const docRef = firestoreDB.collection(COLLECTION_SETTINGS).doc(DOC_HIDDEN_RESTAURANTS);
+        await docRef.set({
+            restaurants: restaurantNames || [],
+            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        }, { merge: true });
+        
+        console.log('✅ Hidden restaurants saved to Firestore:', restaurantNames.length, 'restaurants');
+        return true;
+    }, 3, 1000).catch(error => {
+        console.error('Failed to save hidden restaurants to Firestore:', error);
+        throw error;
+    });
+}
+
+// 从 Firestore 加载隐藏餐厅列表
+async function loadHiddenRestaurantsFromFirestore() {
+    if (!firestoreDB) {
+        throw new Error('Firestore not initialized');
+    }
+    
+    return withRetry(async () => {
+        const docRef = firestoreDB.collection(COLLECTION_SETTINGS).doc(DOC_HIDDEN_RESTAURANTS);
+        const doc = await docRef.get();
+        
+        if (!doc.exists) {
+            console.log('No hidden restaurants document found in Firestore');
+            return [];
+        }
+        
+        const data = doc.data();
+        const restaurants = data.restaurants || [];
+        
+        // 确保返回的是字符串数组
+        const validRestaurants = restaurants.filter(name => typeof name === 'string' && name.trim());
+        
+        console.log('✅ Hidden restaurants loaded from Firestore:', validRestaurants.length, 'restaurants');
+        return validRestaurants;
+    }, 3, 1000).catch(error => {
+        console.error('Failed to load hidden restaurants from Firestore:', error);
+        // 如果加载失败，返回空数组而不是抛出错误
+        return [];
+    });
+}
+
+// 监听隐藏餐厅列表变化（实时同步）
+function subscribeToHiddenRestaurants(callback) {
+    if (!firestoreDB) {
+        console.warn('Firestore not initialized, cannot subscribe to hidden restaurants');
+        return () => {};
+    }
+    
+    try {
+        const docRef = firestoreDB.collection(COLLECTION_SETTINGS).doc(DOC_HIDDEN_RESTAURANTS);
+        const unsubscribe = docRef.onSnapshot(
+            (doc) => {
+                if (!doc.exists) {
+                    callback([]);
+                    return;
+                }
+                
+                const data = doc.data();
+                const restaurants = data.restaurants || [];
+                const validRestaurants = restaurants.filter(name => typeof name === 'string' && name.trim());
+                
+                console.log('🔄 Hidden restaurants updated via real-time sync:', validRestaurants.length, 'restaurants');
+                callback(validRestaurants);
+            },
+            (error) => {
+                console.error('Error listening to hidden restaurants:', error);
+                // 出错时返回空数组
+                callback([]);
+            }
+        );
+        
+        console.log('✅ Real-time listener for hidden restaurants set up successfully');
+        return unsubscribe;
+    } catch (error) {
+        console.error('Failed to set up hidden restaurants listener:', error);
+        return () => {};
+    }
 }
 
