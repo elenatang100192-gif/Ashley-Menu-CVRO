@@ -994,10 +994,12 @@ async function loadHiddenRestaurantsFromFirestore() {
         const data = doc.data();
         const restaurants = data.restaurants || [];
         
-        // 确保返回的是字符串数组
-        const validRestaurants = restaurants.filter(name => typeof name === 'string' && name.trim());
+        // 确保返回的是字符串数组，并去除空格
+        const validRestaurants = restaurants
+            .filter(name => typeof name === 'string' && name.trim())
+            .map(name => String(name).trim());
         
-        console.log('✅ Hidden restaurants loaded from Firestore:', validRestaurants.length, 'restaurants');
+        console.log('✅ Hidden restaurants loaded from Firestore:', validRestaurants.length, 'restaurants:', validRestaurants);
         return validRestaurants;
     }, 3, 1000).catch(error => {
         console.error('Failed to load hidden restaurants from Firestore:', error);
@@ -1022,12 +1024,15 @@ function subscribeToHiddenRestaurants(callback) {
                     return;
                 }
                 
-                const data = doc.data();
-                const restaurants = data.restaurants || [];
-                const validRestaurants = restaurants.filter(name => typeof name === 'string' && name.trim());
-                
-                console.log('🔄 Hidden restaurants updated via real-time sync:', validRestaurants.length, 'restaurants');
-                callback(validRestaurants);
+        const data = doc.data();
+        const restaurants = data.restaurants || [];
+        // 确保返回的是字符串数组，并去除空格
+        const validRestaurants = restaurants
+            .filter(name => typeof name === 'string' && name.trim())
+            .map(name => String(name).trim());
+        
+        console.log('🔄 Hidden restaurants updated via real-time sync:', validRestaurants.length, 'restaurants:', validRestaurants);
+        callback(validRestaurants);
             },
             (error) => {
                 console.error('Error listening to hidden restaurants:', error);

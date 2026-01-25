@@ -42,7 +42,7 @@ async function loadHiddenRestaurants() {
             // 从 Firebase 加载
             const restaurants = await loadHiddenRestaurantsFromFirestore();
             hiddenRestaurants = restaurants;
-            console.log('✅ Hidden restaurants loaded from Firebase:', hiddenRestaurants.length);
+            console.log('✅ Hidden restaurants loaded from Firebase:', hiddenRestaurants.length, 'restaurants:', hiddenRestaurants);
         } catch (e) {
             console.error('Failed to load hidden restaurants from Firebase:', e);
             // 如果 Firebase 加载失败，尝试从 localStorage 加载作为后备
@@ -107,7 +107,9 @@ async function saveHiddenRestaurants() {
 
 function isRestaurantHidden(restaurantName) {
     if (!restaurantName) return false;
-    return hiddenRestaurants.includes(restaurantName);
+    // 标准化比较：去除前后空格，统一大小写
+    const normalizedName = String(restaurantName).trim();
+    return hiddenRestaurants.some(hidden => String(hidden).trim() === normalizedName);
 }
 
 // 数据库配置：设置为 true 使用 Firebase，false 使用 IndexedDB（本地存储）
@@ -159,35 +161,35 @@ function initDB() {
     });
 }
 
-// 格式化错误信息，提供用户友好的提示
+// Format error messages with user-friendly prompts
 function getErrorMessage(error, dataType) {
     const errorMsg = error.message || String(error);
-    let userMsg = `无法加载${dataType}。`;
+    let userMsg = `Failed to load ${dataType}.`;
     
-    // 检测常见错误类型
+    // Detect common error types
     if (errorMsg.includes('permission') || errorMsg.includes('Permission denied')) {
-        userMsg += '<br><br>❌ <strong>权限错误</strong>：Firestore 安全规则可能不允许访问。';
-        userMsg += '<br>请检查 Firebase Console → Firestore Database → Rules';
+        userMsg += '<br><br>❌ <strong>Permission Error</strong>: Firestore security rules may not allow access.';
+        userMsg += '<br>Please check Firebase Console → Firestore Database → Rules';
     } else if (errorMsg.includes('network') || errorMsg.includes('Failed to fetch')) {
-        userMsg += '<br><br>❌ <strong>网络错误</strong>：无法连接到 Firebase 服务器。';
-        userMsg += '<br>请检查：<br>1. 移动网络/WiFi 连接<br>2. 防火墙设置<br>3. VPN 是否影响连接';
+        userMsg += '<br><br>❌ <strong>Network Error</strong>: Unable to connect to Firebase server.';
+        userMsg += '<br>Please check:<br>1. Mobile network/WiFi connection<br>2. Firewall settings<br>3. Whether VPN affects the connection';
     } else if (errorMsg.includes('index')) {
-        userMsg += '<br><br>⚠️ <strong>索引缺失</strong>：Firestore 可能需要创建索引。';
-        userMsg += '<br>数据仍会加载，但可能较慢。';
+        userMsg += '<br><br>⚠️ <strong>Missing Index</strong>: Firestore may need to create an index.';
+        userMsg += '<br>Data will still load, but may be slower.';
     } else if (errorMsg.includes('quota') || errorMsg.includes('quota exceeded')) {
-        userMsg += '<br><br>❌ <strong>配额超限</strong>：Firebase 免费额度可能已用完。';
-        userMsg += '<br>请检查 Firebase Console 中的使用情况。';
+        userMsg += '<br><br>❌ <strong>Quota Exceeded</strong>: Firebase free quota may be exhausted.';
+        userMsg += '<br>Please check usage in Firebase Console.';
     } else {
-        userMsg += '<br><br>错误详情：' + errorMsg;
+        userMsg += '<br><br>Error details: ' + errorMsg;
     }
     
-    // 添加移动端特定提示
+    // Add mobile-specific tips
     const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     if (isMobile) {
-        userMsg += '<br><br>📱 <strong>移动端提示</strong>：';
-        userMsg += '<br>• 确保使用 HTTPS 访问（Netlify 已自动配置）';
-        userMsg += '<br>• 检查移动网络是否允许访问 Firebase';
-        userMsg += '<br>• 尝试切换到 WiFi 网络';
+        userMsg += '<br><br>📱 <strong>Mobile Tips</strong>:';
+        userMsg += '<br>• Ensure using HTTPS access (Netlify is automatically configured)';
+        userMsg += '<br>• Check if mobile network allows access to Firebase';
+        userMsg += '<br>• Try switching to WiFi network';
     }
     
     return userMsg;
@@ -198,7 +200,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // 显示加载状态
     const menuContainer = document.getElementById('menuContainer');
     if (menuContainer) {
-        menuContainer.innerHTML = '<div class="loading-message">正在加载数据...</div>';
+        menuContainer.innerHTML = '<div class="loading-message">Loading data...</div>';
     }
     
     try {
@@ -206,14 +208,14 @@ document.addEventListener('DOMContentLoaded', async function() {
             // 使用 Firebase
             if (typeof firebase === 'undefined') {
                 if (menuContainer) {
-                    menuContainer.innerHTML = '<div class="error-message">Firebase SDK 未加载。请检查 firebase-config.js 和 index.html 中的 Firebase SDK 引用。</div>';
+                    menuContainer.innerHTML = '<div class="error-message">Firebase SDK not loaded. Please check firebase-config.js and ensure Firebase SDK is included in index.html.</div>';
                 }
                 alert('Firebase SDK not loaded. Please check firebase-config.js and ensure Firebase SDK is included in index.html');
                 return;
             }
             
             try {
-                console.log('开始初始化 Firestore...');
+                    console.log('Initializing Firestore...');
                 await initFirestore();
                 console.log('✅ Firestore initialized');
                 
@@ -223,11 +225,11 @@ document.addEventListener('DOMContentLoaded', async function() {
                 let menuLoadError = null;
                 
                 try {
-                    console.log('开始加载菜单数据...');
-                    // 使用 Promise.race 添加超时
+                    console.log('Loading menu data...');
+                    // Add timeout using Promise.race
                     const loadPromise = loadMenuItemsFromFirestore();
                     const timeoutPromise = new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('数据加载超时（30秒）。请检查网络连接或刷新页面重试。')), LOAD_TIMEOUT)
+                        setTimeout(() => reject(new Error('Data loading timeout (30 seconds). Please check your network connection or refresh the page to retry.')), LOAD_TIMEOUT)
                     );
                     
                     menuItems = await Promise.race([loadPromise, timeoutPromise]);
@@ -236,13 +238,13 @@ document.addEventListener('DOMContentLoaded', async function() {
                     // 如果数据为空，记录警告（renderMenu 会处理显示）
                     if (menuItems.length === 0) {
                         console.warn('⚠️ Menu items array is empty - Firestore collection may be empty');
-                        console.log('提示：如果这是第一次使用，需要先添加菜单数据');
+                        console.log('Tip: If this is the first time using, you need to add menu data first');
                     } else {
-                        console.log('菜单数据示例:', menuItems.slice(0, 2)); // 显示前2个菜单项作为示例
+                        console.log('Menu data sample:', menuItems.slice(0, 2)); // Show first 2 menu items as example
                     }
                 } catch (menuError) {
                     console.error('❌ Failed to load menu items:', menuError);
-                    console.error('错误详情:', {
+                    console.error('Error details:', {
                         message: menuError.message,
                         stack: menuError.stack,
                         name: menuError.name,
@@ -261,48 +263,48 @@ document.addEventListener('DOMContentLoaded', async function() {
                                          menuError.message.includes('Failed to fetch') ||
                                          menuError.message.includes('network');
                     
-                    // 显示用户友好的错误提示
-                    const errorMsg = getErrorMessage(menuError, '菜单数据');
+                    // Display user-friendly error message
+                    const errorMsg = getErrorMessage(menuError, 'menu data');
                     let diagnosticInfo = '';
                     
                     if (isNetlifyDomain && (isPermissionDenied || isNetworkError)) {
                         diagnosticInfo = '<div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: left;">' +
-                            '<strong style="color: #856404;">⚠️ Netlify 部署常见问题：</strong><br>' +
+                            '<strong style="color: #856404;">⚠️ Common Netlify Deployment Issues:</strong><br>' +
                             '<ol style="margin: 10px 0 0 20px; color: #856404;">' +
-                            '<li><strong>Firebase 授权域名未配置</strong><br>' +
-                            '请访问 Firebase Console → Authentication → Settings → Authorized domains<br>' +
-                            '添加域名：<code style="background: #f0f0f0; padding: 2px 5px;">' + window.location.hostname + '</code></li>' +
-                            '<li><strong>Firestore 安全规则</strong><br>' +
-                            '请检查 Firebase Console → Firestore Database → Rules<br>' +
-                            '确保规则允许读取：<code style="background: #f0f0f0; padding: 2px 5px;">allow read: if true;</code></li>' +
+                            '<li><strong>Firebase Authorized Domain Not Configured</strong><br>' +
+                            'Please visit Firebase Console → Authentication → Settings → Authorized domains<br>' +
+                            'Add domain: <code style="background: #f0f0f0; padding: 2px 5px;">' + window.location.hostname + '</code></li>' +
+                            '<li><strong>Firestore Security Rules</strong><br>' +
+                            'Please check Firebase Console → Firestore Database → Rules<br>' +
+                            'Ensure rules allow reading: <code style="background: #f0f0f0; padding: 2px 5px;">allow read: if true;</code></li>' +
                             '</ol>' +
-                            '<p style="margin-top: 10px; color: #856404;"><small>📖 详细指南：查看项目中的 <code>NETLIFY_DATA_LOSS_FIX.md</code> 文件</small></p>' +
+                            '<p style="margin-top: 10px; color: #856404;"><small>📖 Detailed guide: See <code>NETLIFY_DATA_LOSS_FIX.md</code> file in the project</small></p>' +
                             '</div>';
                     }
                     
                     if (menuContainer) {
                         menuContainer.innerHTML = '<div class="error-message">' + errorMsg + 
                             diagnosticInfo +
-                            '<br><br><button onclick="location.reload()" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">🔄 重试</button>' +
-                            '<br><br><details style="margin-top: 15px; text-align: left;"><summary style="cursor: pointer; color: #4CAF50;">🔍 查看详细诊断信息</summary><pre style="background: #2a2a2a; padding: 10px; border-radius: 5px; overflow-x: auto; margin-top: 10px; font-size: 12px; text-align: left;">' +
-                            '当前域名: ' + window.location.hostname + '\n' +
-                            '完整 URL: ' + window.location.href + '\n' +
-                            'Firebase 配置: ' + (typeof firebase !== 'undefined' ? '已加载 ✓' : '未加载 ✗') + '\n' +
-                            'Firestore 初始化: ' + (firestoreDB ? '已初始化 ✓' : '未初始化 ✗') + '\n' +
-                            '错误代码: ' + (menuError.code || 'N/A') + '\n' +
-                            '错误消息: ' + menuError.message + '\n' +
-                            '错误堆栈: ' + (menuError.stack || 'N/A') +
+                            '<br><br><button onclick="location.reload()" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">🔄 Retry</button>' +
+                            '<br><br><details style="margin-top: 15px; text-align: left;"><summary style="cursor: pointer; color: #4CAF50;">🔍 View Detailed Diagnostic Information</summary><pre style="background: #2a2a2a; padding: 10px; border-radius: 5px; overflow-x: auto; margin-top: 10px; font-size: 12px; text-align: left;">' +
+                            'Current Domain: ' + window.location.hostname + '\n' +
+                            'Full URL: ' + window.location.href + '\n' +
+                            'Firebase Config: ' + (typeof firebase !== 'undefined' ? 'Loaded ✓' : 'Not Loaded ✗') + '\n' +
+                            'Firestore Initialized: ' + (firestoreDB ? 'Initialized ✓' : 'Not Initialized ✗') + '\n' +
+                            'Error Code: ' + (menuError.code || 'N/A') + '\n' +
+                            'Error Message: ' + menuError.message + '\n' +
+                            'Error Stack: ' + (menuError.stack || 'N/A') +
                             '</pre></details>' +
-                            '<br><br><small style="color: #999;">如果问题持续，请检查：<br>1. 网络连接<br>2. Firebase 配置<br>3. Firestore 安全规则<br>4. Firebase 授权域名（Netlify 部署）</small></div>';
+                            '<br><br><small style="color: #999;">If the problem persists, please check:<br>1. Network connection<br>2. Firebase configuration<br>3. Firestore security rules<br>4. Firebase authorized domains (Netlify deployment)</small></div>';
                     }
                 }
                 
                 let ordersLoadError = null;
                 try {
-                    console.log('开始加载订单数据...');
+                    console.log('Loading order data...');
                     const loadOrdersPromise = loadOrdersFromFirestore();
                     const timeoutPromise = new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('订单加载超时')), LOAD_TIMEOUT)
+                        setTimeout(() => reject(new Error('Order loading timeout')), LOAD_TIMEOUT)
                     );
                     allOrders = await Promise.race([loadOrdersPromise, timeoutPromise]);
                     console.log('✅ Orders loaded:', allOrders.length, 'orders');
@@ -310,26 +312,26 @@ document.addEventListener('DOMContentLoaded', async function() {
                     console.error('❌ Failed to load orders:', ordersError);
                     allOrders = [];
                     ordersLoadError = ordersError;
-                    // 订单加载失败不影响菜单显示，只记录错误
+                    // Order loading failure does not affect menu display, only log error
                     console.warn('⚠️ Orders loading failed:', ordersError.message);
                 }
                 
-                // 如果菜单加载失败，不继续渲染
+                // If menu loading fails, don't continue rendering
                 if (menuLoadError) {
                     return;
                 }
                 
-                // 设置实时监听（必须在数据加载后设置，以便立即接收更新）
+                // Set up real-time listeners (must be set after data loading to receive updates immediately)
                 try {
                     console.log('🔍 Setting up real-time data listeners...');
                     unsubscribeMenuItems = subscribeToMenuItems((items) => {
                         console.log('🔄 Real-time sync triggered:', items.length, 'items received');
                         console.log('📋 Items:', items.map(item => ({ id: item.id, name: item.name })));
                         
-                        // 更新数据
+                        // Update data
                         menuItems = items;
                         
-                // 刷新显示
+                // Refresh display
                 console.log('🔄 Rendering menu with', items.length, 'items from real-time sync');
                 renderMenu();
                 renderItemsList();
@@ -341,17 +343,17 @@ document.addEventListener('DOMContentLoaded', async function() {
                     unsubscribeOrders = subscribeToOrders((orders) => {
                         console.log('🔄 Orders updated via real-time sync:', orders.length, 'orders');
                         allOrders = orders;
-                        // 如果当前在订单页面，刷新显示
+                        // If currently on orders page, refresh display
                         if (document.getElementById('ordersPage').classList.contains('active')) {
                             renderAllOrders();
                         }
                     });
                     
-                    // 设置隐藏餐厅的实时监听
+                    // Set up real-time listener for hidden restaurants
                     unsubscribeHiddenRestaurants = subscribeToHiddenRestaurants((restaurants) => {
                         console.log('🔄 Hidden restaurants updated via real-time sync:', restaurants.length, 'restaurants');
                         hiddenRestaurants = restaurants;
-                        // 刷新显示
+                        // Refresh display
                         renderMenu();
                         renderRestaurantVisibilityControls();
                         updateRestaurantFilter();
@@ -364,20 +366,20 @@ document.addEventListener('DOMContentLoaded', async function() {
                     console.warn('⚠️ Continuing without real-time sync - data will only sync on page refresh');
                 }
                 
-                // 加载隐藏餐厅配置（Firebase 模式下）
+                // Load hidden restaurants configuration (Firebase mode)
                 try {
                     await loadHiddenRestaurants();
                     console.log('✅ Hidden restaurants loaded from Firebase');
                 } catch (hiddenError) {
                     console.error('Failed to load hidden restaurants:', hiddenError);
-                    // 继续执行，使用空数组
+                    // Continue execution, use empty array
                     hiddenRestaurants = [];
                 }
                 
-                console.log('✅ Firebase 数据加载完成');
+                console.log('✅ Firebase data loading completed');
             } catch (firebaseError) {
                 console.error('Firebase initialization failed:', firebaseError);
-                console.error('错误详情:', {
+                console.error('Error details:', {
                     message: firebaseError.message,
                     stack: firebaseError.stack,
                     name: firebaseError.name,
@@ -386,9 +388,9 @@ document.addEventListener('DOMContentLoaded', async function() {
                     domain: window.location.hostname
                 });
                 
-                const errorMsg = getErrorMessage(firebaseError, 'Firebase 数据库');
+                const errorMsg = getErrorMessage(firebaseError, 'Firebase database');
                 
-                // 检查是否是授权域名问题
+                // Check if it's an authorized domain issue
                 const isNetlifyDomain = window.location.hostname.includes('netlify.app');
                 const isPermissionDenied = firebaseError.code === 'permission-denied' || 
                                          firebaseError.message.includes('permission-denied');
@@ -399,45 +401,45 @@ document.addEventListener('DOMContentLoaded', async function() {
                 let diagnosticInfo = '';
                 if (isNetlifyDomain && (isPermissionDenied || isNetworkError)) {
                     diagnosticInfo = '<div style="background: #fff3cd; border: 1px solid #ffc107; padding: 15px; border-radius: 5px; margin: 15px 0; text-align: left;">' +
-                        '<strong style="color: #856404;">⚠️ Netlify 部署常见问题：</strong><br>' +
+                        '<strong style="color: #856404;">⚠️ Common Netlify Deployment Issues:</strong><br>' +
                         '<ol style="margin: 10px 0 0 20px; color: #856404;">' +
-                        '<li><strong>Firebase 授权域名未配置</strong><br>' +
-                        '请访问 Firebase Console → Authentication → Settings → Authorized domains<br>' +
-                        '添加域名：<code style="background: #f0f0f0; padding: 2px 5px;">' + window.location.hostname + '</code></li>' +
-                        '<li><strong>Firestore 安全规则</strong><br>' +
-                        '请检查 Firebase Console → Firestore Database → Rules<br>' +
-                        '确保规则允许读取：<code style="background: #f0f0f0; padding: 2px 5px;">allow read: if true;</code></li>' +
+                        '<li><strong>Firebase Authorized Domain Not Configured</strong><br>' +
+                        'Please visit Firebase Console → Authentication → Settings → Authorized domains<br>' +
+                        'Add domain: <code style="background: #f0f0f0; padding: 2px 5px;">' + window.location.hostname + '</code></li>' +
+                        '<li><strong>Firestore Security Rules</strong><br>' +
+                        'Please check Firebase Console → Firestore Database → Rules<br>' +
+                        'Ensure rules allow reading: <code style="background: #f0f0f0; padding: 2px 5px;">allow read: if true;</code></li>' +
                         '</ol>' +
-                        '<p style="margin-top: 10px; color: #856404;"><small>📖 详细指南：查看项目中的 <code>NETLIFY_DATA_LOSS_FIX.md</code> 文件</small></p>' +
+                        '<p style="margin-top: 10px; color: #856404;"><small>📖 Detailed guide: See <code>NETLIFY_DATA_LOSS_FIX.md</code> file in the project</small></p>' +
                         '</div>';
                 }
                 
                 if (menuContainer) {
                     menuContainer.innerHTML = '<div class="error-message">' + errorMsg + 
                         diagnosticInfo +
-                        '<br><br><button onclick="location.reload()" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">🔄 重试</button>' +
-                        '<br><br><details style="margin-top: 15px; text-align: left;"><summary style="cursor: pointer; color: #4CAF50;">🔍 查看详细诊断信息</summary><pre style="background: #2a2a2a; padding: 10px; border-radius: 5px; overflow-x: auto; margin-top: 10px; font-size: 12px; text-align: left;">' +
-                        '当前域名: ' + window.location.hostname + '\n' +
-                        '完整 URL: ' + window.location.href + '\n' +
+                        '<br><br><button onclick="location.reload()" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">🔄 Retry</button>' +
+                        '<br><br><details style="margin-top: 15px; text-align: left;"><summary style="cursor: pointer; color: #4CAF50;">🔍 View Detailed Diagnostic Information</summary><pre style="background: #2a2a2a; padding: 10px; border-radius: 5px; overflow-x: auto; margin-top: 10px; font-size: 12px; text-align: left;">' +
+                        'Current Domain: ' + window.location.hostname + '\n' +
+                        'Full URL: ' + window.location.href + '\n' +
                         'User Agent: ' + navigator.userAgent + '\n' +
-                        'Firebase Config: ' + (typeof firebase !== 'undefined' ? '已加载 ✓' : '未加载 ✗') + '\n' +
-                        'Firestore 初始化: ' + (firestoreDB ? '已初始化 ✓' : '未初始化 ✗') + '\n' +
-                        '错误代码: ' + (firebaseError.code || 'N/A') + '\n' +
-                        '错误消息: ' + firebaseError.message + '\n' +
-                        '错误堆栈: ' + (firebaseError.stack || 'N/A') +
+                        'Firebase Config: ' + (typeof firebase !== 'undefined' ? 'Loaded ✓' : 'Not Loaded ✗') + '\n' +
+                        'Firestore Initialized: ' + (firestoreDB ? 'Initialized ✓' : 'Not Initialized ✗') + '\n' +
+                        'Error Code: ' + (firebaseError.code || 'N/A') + '\n' +
+                        'Error Message: ' + firebaseError.message + '\n' +
+                        'Error Stack: ' + (firebaseError.stack || 'N/A') +
                         '</pre></details></div>';
                 } else {
-                    alert('无法连接到 Firebase 数据库。\n\n' + errorMsg + 
-                        (isNetlifyDomain ? '\n\n⚠️ 如果是 Netlify 部署，请检查 Firebase 授权域名配置。' : ''));
+                    alert('Unable to connect to Firebase database.\n\n' + errorMsg + 
+                        (isNetlifyDomain ? '\n\n⚠️ If this is a Netlify deployment, please check Firebase authorized domain configuration.' : ''));
                 }
-                // 使用空数据继续，避免页面完全无法使用
+                // Continue with empty data to avoid page being completely unusable
                 menuItems = [];
                 allOrders = [];
-                // 不返回，继续执行以绑定事件监听器
+                // Don't return, continue to bind event listeners
             }
         } else {
-            // 使用 IndexedDB（本地存储）
-            console.log('使用 IndexedDB（本地存储）...');
+            // Use IndexedDB (local storage)
+            console.log('Using IndexedDB (local storage)...');
             await initDB();
             
             // Migrate data from localStorage to IndexedDB if needed
@@ -446,21 +448,28 @@ document.addEventListener('DOMContentLoaded', async function() {
             // Load data from IndexedDB
             await loadMenuFromStorage();
             await loadOrdersFromStorage();
-            console.log('✅ IndexedDB 数据加载完成');
+            console.log('✅ IndexedDB data loading completed');
         }
         
-        // 加载餐厅隐藏配置（异步）
+        // Load restaurant visibility configuration (async)
         await loadHiddenRestaurants();
+        console.log('📋 Current hidden restaurants:', hiddenRestaurants);
+        console.log('📋 Total menu items:', menuItems.length);
+        console.log('📋 Menu items by restaurant:', menuItems.reduce((acc, item) => {
+            const tag = item.tag || 'No Restaurant';
+            acc[tag] = (acc[tag] || 0) + 1;
+            return acc;
+        }, {}));
         
-        // 统一渲染界面（无论使用 Firebase 还是 IndexedDB）
-        console.log('开始渲染菜单界面...');
+        // Unified rendering (whether using Firebase or IndexedDB)
+        console.log('Starting to render menu interface...');
         renderMenu();
         renderSelectedItems();
         renderItemsList();
         renderRestaurantVisibilityControls();
         // Update restaurant filter options after initial render
         updateRestaurantFilter();
-        console.log('✅ 页面初始化完成');
+        console.log('✅ Page initialization completed');
     
     // Bind events
     document.getElementById('confirmBtn').addEventListener('click', confirmOrder);
@@ -737,7 +746,7 @@ function compressImage(file, maxWidth = 600, maxHeight = 600, quality = 0.75) {
                                                 if (lowerSize <= maxSize) {
                                                     resolve(lowerQualityDataURL);
                                                 } else {
-                                                    reject(new Error('图片压缩后仍然太大，请使用更小的图片'));
+                                                    reject(new Error('Image is still too large after compression, please use a smaller image'));
                                                 }
                                             } else {
                                                 resolve(dataURL);
@@ -756,11 +765,11 @@ function compressImage(file, maxWidth = 600, maxHeight = 600, quality = 0.75) {
                                                         resolve(e2.target.result);
                                                     };
                                                     reader2.onerror = function(err) {
-                                                        reject(new Error('图片读取失败: ' + (err.message || '未知错误')));
+                                                        reject(new Error('Failed to read image: ' + (err.message || 'Unknown error')));
                                                     };
                                                     reader2.readAsDataURL(blob2);
                                                 } else {
-                                                    reject(new Error('图片压缩后仍然太大，请使用更小的图片'));
+                                                    reject(new Error('Image is still too large after compression, please use a smaller image'));
                                                 }
                                             }, 'image/jpeg', 0.6);
                                             return;
@@ -775,7 +784,7 @@ function compressImage(file, maxWidth = 600, maxHeight = 600, quality = 0.75) {
                                         };
                                         reader2.readAsDataURL(blob);
                                     } catch (blobError) {
-                                        reject(new Error('图片处理失败: ' + blobError.message));
+                                        reject(new Error('Image processing failed: ' + blobError.message));
                                     }
                                 }, 'image/jpeg', quality);
                             } else {
@@ -800,7 +809,7 @@ function compressImage(file, maxWidth = 600, maxHeight = 600, quality = 0.75) {
                                         resolve(dataURL);
                                     }
                                 } catch (dataURLError) {
-                                    reject(new Error('图片转换失败: ' + dataURLError.message));
+                                    reject(new Error('Image conversion failed: ' + dataURLError.message));
                                 }
                             }
                         } catch (imgLoadError) {
@@ -1272,7 +1281,7 @@ async function addMenuItem() {
             console.error('❌ Add item operation timeout');
             addBtn.disabled = false;
             addBtn.textContent = originalText;
-            alert('操作超时，请检查网络连接后重试。\n\n如果问题持续，请尝试：\n1. 使用更小的图片\n2. 切换到 WiFi 网络\n3. 刷新页面后重试');
+            alert('Operation timeout, please check your network connection and try again.\n\nIf the problem persists, please try:\n1. Use a smaller image\n2. Switch to WiFi network\n3. Refresh the page and try again');
         }
     }, OPERATION_TIMEOUT);
     
@@ -1310,7 +1319,7 @@ async function addMenuItem() {
                 // 为 Firebase 保存添加超时保护
                 const savePromise = saveMenuToStorage();
                 const saveTimeoutPromise = new Promise((_, reject) => 
-                    setTimeout(() => reject(new Error('保存超时，请检查网络连接')), 30000)
+                    setTimeout(() => reject(new Error('Save timeout, please check network connection')), 30000)
                 );
                 
                 await Promise.race([savePromise, saveTimeoutPromise]);
@@ -1339,17 +1348,17 @@ async function addMenuItem() {
                 
                 // 移动端特定的错误提示
                 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-                let errorMsg = e.message || '保存失败';
+                let errorMsg = e.message || 'Save failed';
                 
                 if (isMobile) {
                     if (errorMsg.includes('timeout') || errorMsg.includes('超时') || errorMsg.includes('network')) {
-                        errorMsg = '网络连接超时，请检查：\n1. WiFi 或移动网络连接\n2. 切换到更稳定的网络\n3. 刷新页面后重试';
+                        errorMsg = 'Network connection timeout, please check:\n1. WiFi or mobile network connection\n2. Switch to a more stable network\n3. Refresh the page and try again';
                     } else if (errorMsg.includes('permission') || errorMsg.includes('权限')) {
-                        errorMsg = '权限错误，请检查 Firebase 配置';
+                        errorMsg = 'Permission error, please check Firebase configuration';
                     }
                 }
                 
-                alert('保存失败: ' + errorMsg + '\n\n请尝试：\n1. 使用更小的图片文件\n2. 检查网络连接\n3. 刷新页面后重试');
+                alert('Save failed: ' + errorMsg + '\n\nPlease try:\n1. Use a smaller image file\n2. Check network connection\n3. Refresh the page and try again');
                 console.error('❌ Storage error:', e);
                 return;
             }
@@ -1378,7 +1387,7 @@ async function addMenuItem() {
             // Re-enable button
             restoreButton();
             
-            alert('添加成功！');
+            alert('Item added successfully!');
         })
         .catch(error => {
             if (operationCompleted) return; // 如果已经超时，不再处理
@@ -1388,19 +1397,19 @@ async function addMenuItem() {
             
             // 移动端特定的错误提示
             const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-            let errorMsg = error && error.message ? error.message : '图片处理错误';
+            let errorMsg = error && error.message ? error.message : 'Image processing error';
             
             if (isMobile) {
                 if (errorMsg.includes('timeout') || errorMsg.includes('超时')) {
-                    errorMsg = '图片处理超时，请尝试使用更小的图片';
+                    errorMsg = 'Image processing timeout, please try using a smaller image';
                 } else if (errorMsg.includes('memory') || errorMsg.includes('内存')) {
-                    errorMsg = '内存不足，请使用更小的图片';
+                    errorMsg = 'Insufficient memory, please use a smaller image';
                 } else if (errorMsg.includes('canvas') || errorMsg.includes('context')) {
-                    errorMsg = '浏览器不支持图片处理，请尝试其他浏览器';
+                    errorMsg = 'Browser does not support image processing, please try another browser';
                 }
             }
             
-            alert('添加失败: ' + errorMsg + '\n\n请尝试：\n1. 使用更小的图片文件（建议小于 5MB）\n2. 使用 JPG 或 PNG 格式\n3. 检查图片是否损坏\n4. 刷新页面后重试');
+            alert('Add failed: ' + errorMsg + '\n\nPlease try:\n1. Use a smaller image file (recommended less than 5MB)\n2. Use JPG or PNG format\n3. Check if the image is corrupted\n4. Refresh the page and try again');
         });
 }
 
@@ -1618,11 +1627,25 @@ function renderRestaurantVisibilityControls() {
             const currentlyHidden = isRestaurantHidden(name);
             const shouldBeVisible = e.target.checked;
             
+            console.log('🔄 Restaurant visibility change:', {
+                name: name,
+                currentlyHidden: currentlyHidden,
+                shouldBeVisible: shouldBeVisible,
+                currentHiddenList: hiddenRestaurants
+            });
+            
             if (shouldBeVisible && currentlyHidden) {
-                hiddenRestaurants = hiddenRestaurants.filter(r => r !== name);
+                // 移除隐藏状态（使用标准化比较）
+                hiddenRestaurants = hiddenRestaurants.filter(r => String(r).trim() !== String(name).trim());
             } else if (!shouldBeVisible && !currentlyHidden) {
-                hiddenRestaurants.push(name);
+                // 添加到隐藏列表（确保不重复）
+                const normalizedName = String(name).trim();
+                if (!hiddenRestaurants.some(r => String(r).trim() === normalizedName)) {
+                    hiddenRestaurants.push(normalizedName);
+                }
             }
+            
+            console.log('✅ Updated hidden restaurants:', hiddenRestaurants);
             
             await saveHiddenRestaurants();
             // Re-render menu and filter based on updated visibility
@@ -1689,24 +1712,34 @@ function renderMenu() {
     
     if (menuItems.length === 0) {
         container.innerHTML = '<div class="empty-message" style="padding: 40px; text-align: center; max-width: 600px; margin: 0 auto;">' +
-            '<h3 style="color: #4CAF50; margin-bottom: 15px;">📋 菜单为空</h3>' +
-            '<p style="margin-bottom: 20px; color: #666;">Firestore 数据库中还没有菜单数据。</p>' +
+            '<h3 style="color: #4CAF50; margin-bottom: 15px;">📋 Menu is Empty</h3>' +
+            '<p style="margin-bottom: 20px; color: #666;">No menu data in Firestore database yet.</p>' +
             '<div style="background: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0; text-align: left;">' +
-            '<p style="margin-bottom: 10px; font-weight: bold; color: #333;">如何添加菜单：</p>' +
+            '<p style="margin-bottom: 10px; font-weight: bold; color: #333;">How to add menu items:</p>' +
             '<ol style="margin-left: 20px; color: #666; line-height: 1.8;">' +
-            '<li>点击右上角的<strong>"管理"</strong>按钮</li>' +
-            '<li>点击<strong>"添加菜单项"</strong>按钮</li>' +
-            '<li>填写菜单信息（名称、分类、价格等）</li>' +
-            '<li>点击<strong>"保存"</strong>按钮</li>' +
+            '<li>Click the <strong>"Manage Menu"</strong> button in the top right</li>' +
+            '<li>Click the <strong>"Add Item"</strong> button</li>' +
+            '<li>Fill in menu information (name, category, price, etc.)</li>' +
+            '<li>Click the <strong>"Add Item"</strong> button</li>' +
             '</ol>' +
             '</div>' +
-            '<button onclick="location.reload()" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; margin-top: 10px;">🔄 刷新页面</button>' +
+            '<button onclick="location.reload()" style="padding: 12px 24px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; margin-top: 10px;">🔄 Refresh Page</button>' +
             '</div>';
         return;
     }
     
     // Filter out items from hidden restaurants
-    let filteredItems = menuItems.filter(item => !isRestaurantHidden(item.tag));
+    let filteredItems = menuItems.filter(item => {
+        const isHidden = isRestaurantHidden(item.tag);
+        if (isHidden) {
+            console.log('🚫 Filtering out item from hidden restaurant:', {
+                itemName: item.name,
+                restaurant: item.tag,
+                hiddenRestaurants: hiddenRestaurants
+            });
+        }
+        return !isHidden;
+    });
     
     // Filter items by restaurant if filter is selected
     if (selectedRestaurant) {
