@@ -612,7 +612,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 // Show management page
 function showManagePage() {
     // Password protection for Manage Menu
-    const password = prompt('Please enter password to access Manage Menu:');
+    const password = prompt('Enter password to access Manage Menu:');
     
     if (password === null) {
         // User cancelled
