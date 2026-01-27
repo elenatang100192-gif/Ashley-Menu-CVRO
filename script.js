@@ -611,6 +611,20 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 // Show management page
 function showManagePage() {
+    // Password protection for Manage Menu
+    const password = prompt('Please enter password to access Manage Menu:');
+    
+    if (password === null) {
+        // User cancelled
+        return;
+    }
+    
+    if (password !== 'ashley') {
+        alert('Incorrect password. Access denied.');
+        return;
+    }
+    
+    // Password correct, proceed to manage page
     document.getElementById('menuPage').classList.remove('active');
     document.getElementById('summaryPage').classList.remove('active');
     document.getElementById('ordersPage').classList.remove('active');
@@ -1432,17 +1446,42 @@ async function deleteMenuItem(itemId) {
 // Delete order
 async function deleteOrder(orderId) {
     if (confirm('Are you sure you want to delete this order? This action cannot be undone.')) {
-        console.log('🗑️ Deleting order:', orderId);
+        console.log('🗑️ Deleting order:', orderId, 'Type:', typeof orderId);
         console.log('📋 Orders before deletion:', allOrders.length);
+        console.log('📋 Current order IDs:', allOrders.map(o => ({ id: o.id, type: typeof o.id })));
         
         // Set flag to prevent renderAllOrders from reloading during delete
         window._isDeletingOrder = true;
         
-        // Filter out the order to delete
-        const orderToDelete = allOrders.find(order => order.id === orderId);
+        // Temporarily unsubscribe from real-time updates to prevent override
+        let tempUnsubscribe = null;
+        if (USE_FIREBASE && unsubscribeOrders) {
+            console.log('🔇 Temporarily unsubscribing from real-time updates');
+            tempUnsubscribe = unsubscribeOrders;
+            unsubscribeOrders();
+            unsubscribeOrders = null;
+        }
+        
+        // Filter out the order to delete (handle both string and number ID comparison)
+        const orderToDelete = allOrders.find(order => {
+            const orderIdStr = String(order.id);
+            const targetIdStr = String(orderId);
+            return orderIdStr === targetIdStr;
+        });
+        
         if (!orderToDelete) {
             console.warn('⚠️ Order not found:', orderId);
             window._isDeletingOrder = false;
+            // Restore real-time listener if we unsubscribed
+            if (tempUnsubscribe && USE_FIREBASE) {
+                unsubscribeOrders = subscribeToOrders((orders) => {
+                    console.log('🔄 Orders updated via real-time sync:', orders.length, 'orders');
+                    allOrders = orders;
+                    if (document.getElementById('ordersPage').classList.contains('active')) {
+                        renderAllOrders();
+                    }
+                });
+            }
             alert('Order not found. It may have already been deleted.');
             // Reload orders to refresh display
             await loadOrdersFromStorage();
@@ -1450,7 +1489,12 @@ async function deleteOrder(orderId) {
             return;
         }
         
-        allOrders = allOrders.filter(order => order.id !== orderId);
+        console.log('🗑️ Found order to delete:', orderToDelete);
+        allOrders = allOrders.filter(order => {
+            const orderIdStr = String(order.id);
+            const targetIdStr = String(orderId);
+            return orderIdStr !== targetIdStr;
+        });
         console.log('📋 Orders after deletion:', allOrders.length);
         
         try {
@@ -1458,13 +1502,25 @@ async function deleteOrder(orderId) {
             await saveOrdersToStorage();
             console.log('✅ Orders saved after deletion');
             
-            // Clear the flag
-            window._isDeletingOrder = false;
-            
             // Wait a bit to ensure Firebase sync completes (if using Firebase)
             if (USE_FIREBASE) {
-                await new Promise(resolve => setTimeout(resolve, 300));
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Increased wait time
             }
+            
+            // Restore real-time listener
+            if (tempUnsubscribe && USE_FIREBASE) {
+                console.log('🔊 Restoring real-time listener');
+                unsubscribeOrders = subscribeToOrders((orders) => {
+                    console.log('🔄 Orders updated via real-time sync:', orders.length, 'orders');
+                    allOrders = orders;
+                    if (document.getElementById('ordersPage').classList.contains('active')) {
+                        renderAllOrders();
+                    }
+                });
+            }
+            
+            // Clear the flag
+            window._isDeletingOrder = false;
             
             // Render the updated orders list (without reloading from storage)
             renderAllOrders();
@@ -1473,6 +1529,18 @@ async function deleteOrder(orderId) {
         } catch (e) {
             console.error('❌ Failed to delete order:', e);
             window._isDeletingOrder = false;
+            
+            // Restore real-time listener if we unsubscribed
+            if (tempUnsubscribe && USE_FIREBASE) {
+                unsubscribeOrders = subscribeToOrders((orders) => {
+                    console.log('🔄 Orders updated via real-time sync:', orders.length, 'orders');
+                    allOrders = orders;
+                    if (document.getElementById('ordersPage').classList.contains('active')) {
+                        renderAllOrders();
+                    }
+                });
+            }
+            
             // Restore the order if save failed
             allOrders.push(orderToDelete);
             alert('Failed to delete order. Please try again.\n\nError: ' + (e.message || e));
