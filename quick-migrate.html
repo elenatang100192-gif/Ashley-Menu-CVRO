@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quick Migrate: Firestore to MySQL</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; max-width: 900px; margin: 0 auto; }
+        .section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        button { padding: 10px 20px; margin: 5px; cursor: pointer; background: #4CAF50; color: white; border: none; border-radius: 5px; }
+        button:hover { background: #45a049; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { background: #e7f3ff; padding: 10px; border-radius: 5px; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; max-height: 200px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <h1>🚀 Quick Migrate: Firestore to MySQL</h1>
+    
+    <div class="section info">
+        <h2>Instructions</h2>
+        <ol>
+            <li><strong>重要：</strong>请通过 HTTP 服务器访问此页面，不要直接打开文件</li>
+            <li>确保 API 服务器正在运行: <code>node api-server.js</code></li>
+            <li>在浏览器中访问: <code>http://localhost:3000/quick-migrate.html</code></li>
+            <li>点击 "Start Migration" 按钮开始迁移</li>
+            <li>等待迁移完成</li>
+            <li>在应用中验证数据</li>
+        </ol>
+        <p style="color: red; font-weight: bold;">
+            ⚠️ 如果直接打开文件（file://），API 请求会失败。请使用 http://localhost:3000/quick-migrate.html
+        </p>
+    </div>
+    
+    <div class="section">
+        <h2>Migration Status</h2>
+        <button id="migrateBtn" onclick="startMigration()">Start Migration</button>
+        <div id="status"></div>
+    </div>
+    
+    <div class="section">
+        <h2>Migration Log</h2>
+        <pre id="log"></pre>
+    </div>
+    
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="firebase-config.js"></script>
+    <script>
+        const API_BASE = '/api';
+        const log = document.getElementById('log');
+        const status = document.getElementById('status');
+        const migrateBtn = document.getElementById('migrateBtn');
+        
+        function addLog(message) {
+            const time = new Date().toLocaleTimeString();
+            log.textContent += `[${time}] ${message}\n`;
+            log.scrollTop = log.scrollHeight;
+            console.log(message);
+        }
+        
+        async function apiRequest(endpoint, method = 'GET', data = null) {
+            const url = `${API_BASE}${endpoint}`;
+            const options = {
+                method: method,
+                headers: { 'Content-Type': 'application/json' }
+            };
+            if (data && (method === 'POST' || method === 'PUT')) {
+                options.body = JSON.stringify(data);
+            }
+            try {
+                const response = await fetch(url, options);
+                if (!response.ok) {
+                    const error = await response.json().catch(() => ({ error: `HTTP ${response.status}: ${response.statusText}` }));
+                    throw new Error(error.error || error.message || `HTTP ${response.status}: ${response.statusText}`);
+                }
+                return await response.json();
+            } catch (error) {
+                // 处理网络错误
+                if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                    const currentUrl = window.location.href;
+                    let errorMsg = `无法连接到 API 服务器 (${url})。\n\n`;
+                    
+                    if (currentUrl.startsWith('file://')) {
+                        errorMsg += '❌ 错误：您正在使用 file:// 协议打开文件。\n\n';
+                        errorMsg += '✅ 解决方法：\n';
+                        errorMsg += '1. 确保 API 服务器正在运行: node api-server.js\n';
+                        errorMsg += '2. 在浏览器中访问: http://localhost:3000/quick-migrate.html\n';
+                        errorMsg += '3. 不要直接双击打开 HTML 文件';
+                    } else {
+                        errorMsg += '请确保：\n';
+                        errorMsg += '1. API 服务器正在运行: node api-server.js\n';
+                        errorMsg += '2. 访问地址正确: http://localhost:3000/quick-migrate.html';
+                    }
+                    
+                    throw new Error(errorMsg);
+                }
+                throw error;
+            }
+        }
+        
+        async function startMigration() {
+            migrateBtn.disabled = true;
+            status.innerHTML = '<p>🔄 Migration in progress...</p>';
+            log.textContent = '';
+            
+            try {
+                addLog('📋 Starting Firestore to MySQL migration...');
+                
+                // Check Firebase connection
+                if (typeof firebase === 'undefined' || !firebase.firestore) {
+                    throw new Error('Firebase not loaded');
+                }
+                const db = firebase.firestore();
+                addLog('✅ Firebase connected');
+                
+                // Check API connection
+                addLog('🔌 Checking API server connection...');
+                try {
+                    await apiRequest('/health');
+                    addLog('✅ API server connected');
+                } catch (error) {
+                    addLog(`❌ API server connection failed: ${error.message}`);
+                    addLog('💡 请确保 API 服务器正在运行: node api-server.js');
+                    throw error;
+                }
+                
+                // Export Menu Items
+                addLog('\n📋 Exporting menu items from Firestore...');
+                const menuSnapshot = await db.collection('menuItems').get();
+                const menuItems = [];
+                menuSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    menuItems.push({
+                        id: data.id,
+                        category: data.category || null,
+                        name: data.name || '',
+                        tag: data.tag || null,
+                        subtitle: data.subtitle || null,
+                        description: data.description || null,
+                        price: data.price || null,
+                        image: data.image || null
+                    });
+                });
+                addLog(`✅ Found ${menuItems.length} menu items`);
+                
+                if (menuItems.length > 0) {
+                    // First, clear all existing items
+                    addLog('🗑️  Clearing existing menu items...');
+                    await apiRequest('/menu-items', 'POST', { items: [], migration: false });
+                    
+                    // Batch upload to avoid payload too large error
+                    const BATCH_SIZE = 10;
+                    let migrated = 0;
+                    for (let i = 0; i < menuItems.length; i += BATCH_SIZE) {
+                        const batch = menuItems.slice(i, i + BATCH_SIZE);
+                        await apiRequest('/menu-items?migration=true', 'POST', { items: batch, migration: true });
+                        migrated += batch.length;
+                        addLog(`✅ Migrated ${migrated}/${menuItems.length} menu items...`);
+                    }
+                    addLog(`✅ Migrated all ${menuItems.length} menu items to MySQL`);
+                }
+                
+                // Export Orders
+                addLog('\n📦 Exporting orders from Firestore...');
+                const ordersSnapshot = await db.collection('orders').get();
+                const orders = [];
+                ordersSnapshot.forEach(doc => {
+                    const data = doc.data();
+                    orders.push({
+                        id: data.id,
+                        name: data.name || '',
+                        order: data.order || '',
+                        items: data.items || [],
+                        date: data.date || ''
+                    });
+                });
+                addLog(`✅ Found ${orders.length} orders`);
+                
+                if (orders.length > 0) {
+                    // Batch upload to avoid payload too large error
+                    const BATCH_SIZE = 50;
+                    let migrated = 0;
+                    for (let i = 0; i < orders.length; i += BATCH_SIZE) {
+                        const batch = orders.slice(i, i + BATCH_SIZE);
+                        await apiRequest('/orders/batch', 'POST', { orders: batch });
+                        migrated += batch.length;
+                        addLog(`✅ Migrated ${migrated}/${orders.length} orders...`);
+                    }
+                    addLog(`✅ Migrated all ${orders.length} orders to MySQL`);
+                }
+                
+                // Export Settings
+                addLog('\n⚙️  Exporting settings from Firestore...');
+                const settingsDoc = await db.collection('settings').doc('hiddenRestaurants').get();
+                let hiddenRestaurants = [];
+                if (settingsDoc.exists) {
+                    const data = settingsDoc.data();
+                    hiddenRestaurants = data.restaurants || [];
+                }
+                addLog(`✅ Found ${hiddenRestaurants.length} hidden restaurants`);
+                
+                await apiRequest('/settings/hiddenRestaurants', 'PUT', { restaurants: hiddenRestaurants });
+                addLog(`✅ Migrated settings to MySQL`);
+                
+                addLog('\n✅ Migration completed successfully!');
+                addLog('\n📊 Summary:');
+                addLog(`   - Menu Items: ${menuItems.length}`);
+                addLog(`   - Orders: ${orders.length}`);
+                addLog(`   - Hidden Restaurants: ${hiddenRestaurants.length}`);
+                
+                status.innerHTML = '<p class="success">✅ Migration completed successfully!</p>';
+                
+            } catch (error) {
+                addLog(`\n❌ Migration failed: ${error.message}`);
+                status.innerHTML = `<p class="error">❌ Migration failed: ${error.message}</p>`;
+            } finally {
+                migrateBtn.disabled = false;
+            }
+        }
+        
+        // Auto-start migration on load
+        window.addEventListener('load', () => {
+            const currentUrl = window.location.href;
+            if (currentUrl.startsWith('file://')) {
+                addLog('⚠️  警告：检测到使用 file:// 协议打开文件');
+                addLog('❌ 这会导致 API 请求失败！');
+                addLog('');
+                addLog('✅ 请按以下步骤操作：');
+                addLog('1. 确保 API 服务器正在运行: node api-server.js');
+                addLog('2. 在浏览器地址栏输入: http://localhost:3000/quick-migrate.html');
+                addLog('3. 不要直接双击打开 HTML 文件');
+                status.innerHTML = '<p class="error">⚠️ 请通过 HTTP 服务器访问此页面！<br>访问地址: <a href="http://localhost:3000/quick-migrate.html" target="_blank">http://localhost:3000/quick-migrate.html</a></p>';
+            } else {
+                addLog('✅ 页面加载完成');
+                addLog('📋 准备就绪，点击 "Start Migration" 开始迁移');
+            }
+        });
+    </script>
+</body>
+</html>
+
