@@ -98,8 +98,8 @@ async function loadHiddenRestaurants() {
     } catch (e) {
         console.error('Failed to load hidden restaurants from localStorage:', e);
         hiddenRestaurants = [];
-        }
     }
+}
 }
 
 async function saveHiddenRestaurants() {
@@ -1926,7 +1926,7 @@ function renderRestaurantVisibilityControls() {
                 const normalizedName = String(name).trim();
                 if (!hiddenRestaurants.some(r => String(r).trim() === normalizedName)) {
                     hiddenRestaurants.push(normalizedName);
-                }
+            }
             }
             
             console.log('✅ Updated hidden restaurants:', hiddenRestaurants);

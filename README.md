@@ -206,7 +206,7 @@ Deploy `api-server.js` to a hosting service:
 ### 2. Update Frontend Configuration
 
 Update `mysql-db.js`:
-```javascript
+   ```javascript
 API_BASE_URL: 'https://your-api-server.com/api'
 ```
 
